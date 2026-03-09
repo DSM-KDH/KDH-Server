@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: OOTDrop
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/ootdrop?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: 1234
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true # jpa 하위가 아닌 여기에 두는 것이 표준입니다.
+    properties:
+      hibernate:
+        format_sql: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.bind: trace
