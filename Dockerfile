@@ -5,8 +5,8 @@ WORKDIR /app
 # 그래들 빌드에 필요한 파일들 복사
 COPY gradlew .
 COPY gradle gradle
-COPY build.gradle .
-COPY settings.gradle .
+COPY build.gradle.kts .
+COPY settings.gradle.kts .
 COPY src src
 
 # 실행 권한 부여 및 JAR 파일 빌드 (테스트는 생략해서 속도 향상)
