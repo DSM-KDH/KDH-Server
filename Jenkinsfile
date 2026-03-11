@@ -68,7 +68,7 @@ pipeline {
                         --log-opt max-size=10m --log-opt max-file=3 \
                         -e SPRING_PROFILES_ACTIVE=${env.PHASE} \
                         -e DB_URL=jdbc:mysql://DB서버IP:3306/${env.DB_NAME} \
-                        --env-file .env
+                        --env-file .env \
                         ${env.APP_NAME}:${env.PHASE}
                     """
                 }
