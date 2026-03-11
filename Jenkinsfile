@@ -31,7 +31,8 @@ pipeline {
         stage('2. 도커 이미지 빌드') {
             steps {
                 echo "Building Docker Image: ${env.APP_NAME}:${env.PHASE}"
-                sh "docker build -t ${env.APP_NAME}:${env.PHASE} ."
+                // 현재 폴더(.)에 있는 Dockerfile을 읽어서 빌드합니다.
+                sh "docker build -t ${env.APP_NAME}:${env.PHASE} . "
             }
         }
 
