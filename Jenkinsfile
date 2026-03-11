@@ -63,12 +63,13 @@ pipeline {
                         docker run -d \
                         --name ${env.APP_NAME}-${env.PHASE} \
                         -p ${env.PORT}:8080 \
+                        --add-host=host.docker.internal:host-gateway \
+                        --env-file .env \
+                        -e SPRING_PROFILES_ACTIVE=${env.PHASE} \
+                        -e DB_URL=jdbc:mysql://host.docker.internal:3306/${env.DB_NAME} \
                         --memory="1g" \
                         --memory-swap="1g" \
                         --log-opt max-size=10m --log-opt max-file=3 \
-                        -e SPRING_PROFILES_ACTIVE=${env.PHASE} \
-                        -e DB_URL=jdbc:mysql://DB서버IP:3306/${env.DB_NAME} \
-                        --env-file .env \
                         ${env.APP_NAME}:${env.PHASE}
                     """
                 }
