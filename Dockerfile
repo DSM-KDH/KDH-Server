@@ -11,7 +11,7 @@ COPY src src
 
 # 실행 권한 부여 및 JAR 파일 빌드 (테스트는 생략해서 속도 향상)
 RUN chmod +x ./gradlew
-RUN ./gradlew clean bootJar -x test --info
+RUN ./gradlew clean bootJar -x test --console=plain --scan --no-daemon -Dscan.acceptOpenSourceLicense=true
 
 # 2단계: 실행 환경 (가벼운 JRE 사용)
 FROM eclipse-temurin:17-jre-jammy
