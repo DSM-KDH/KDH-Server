@@ -17,13 +17,16 @@ pipeline {
                         env.PORT = "8000"          // 운영 포트
                         env.PHASE = "prod"         // 운영 단계
                         env.DB_NAME = "ootdrop" // 운영 DB 스키마 이름
+                        env.DOMAIN = "ootdrop.ajswl.website"
                     } else if (env.BRANCH_NAME == 'develop') {
                         env.PORT = "8001"          // 스테이징 포트
                         env.PHASE = "stg"          // 스테이징 단계
                         env.DB_NAME = "ootdrop_stg"  // 스테이징 DB 스키마 이름
+                        env.DOMAIN = "ootdrop-stg.ajswl.website"
                     } else {
                         error "지원하지 않는 브랜치입니다: ${env.BRANCH_NAME}"
                     }
+
                 }
                 // 'my-env-file'이라는 ID를 가진 파일을 envFile이라는 변수로 가져옵니다.
                 withCredentials([file(credentialsId: 'my-env-file', variable: 'envFile')]) {
@@ -68,6 +71,7 @@ pipeline {
                         -e JAVA_OPTS="-Xmx384M -Xms256M" \
                         -e SPRING_PROFILES_ACTIVE=${env.PHASE} \
                         -e DB_URL=jdbc:mysql://host.docker.internal:3306/${env.DB_NAME} \
+                        -e DOMAIN=${env.DOMAIN} my-image
                         --memory="512m" \
                         --memory-swap="512m" \
                         --log-opt max-size=10m --log-opt max-file=3 \
@@ -86,7 +90,7 @@ pipeline {
                                 // 8080이 아니라 호스트 배포 포트(${env.PORT})로 확인
                                 // -s: 정적(silent), -f: HTTP 에러 시 실패 처리, -o: 출력 버림
                                     def response = sh(
-                                        script: "curl -s -f http://localhost:${env.PORT}/actuator/health || curl -s -f http://localhost:${env.PORT}/",
+                                        script: "curl -s -f http://localhost:${env.PORT}/swagger-ui/index.html || curl -s -f http://localhost:${env.PORT}/",
                                         returnStatus: true
                                     )
                                 return (response == 0)
