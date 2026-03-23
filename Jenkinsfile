@@ -26,7 +26,6 @@ pipeline {
                     } else {
                         error "지원하지 않는 브랜치입니다: ${env.BRANCH_NAME}"
                     }
-
                 }
                 // 'my-env-file'이라는 ID를 가진 파일을 envFile이라는 변수로 가져옵니다.
                 withCredentials([file(credentialsId: 'my-env-file', variable: 'envFile')]) {
