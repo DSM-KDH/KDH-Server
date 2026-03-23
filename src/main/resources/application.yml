@@ -2,6 +2,11 @@ spring:
   application:
     name: KDH
 
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -29,7 +34,7 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
-            redirect-uri: https://${DOMAIN}/login/oauth2/code/google
+            redirect-uri: ${DOMAIN}/login/oauth2/code/google
             scope:
               - email
               - profile
