@@ -1,1 +1,1 @@
-rootProject.name = "OOTDrop"
+rootProject.name = "KDH"
