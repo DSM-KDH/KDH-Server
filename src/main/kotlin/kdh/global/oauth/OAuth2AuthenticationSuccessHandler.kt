@@ -37,15 +37,12 @@ class OAuth2AuthenticationSuccessHandler(
         response: HttpServletResponse,
         authentication: Authentication
     ) {
-        // 인증된 사용자 정보 추출
         val customOAuth2User = authentication.principal as CustomOAuth2User
 
-        // JWT Access Token 및 Refresh Token 생성
-        val accessToken = jwtUtil.generateAccessToken(customOAuth2User.providerId, customOAuth2User.name)
-        val refreshToken = jwtUtil.generateRefreshToken(customOAuth2User.providerId, customOAuth2User.name)
+        val accessToken = jwtUtil.generateAccessToken(customOAuth2User.provider, customOAuth2User.providerId, customOAuth2User.name)
+        val refreshToken = jwtUtil.generateRefreshToken(customOAuth2User.provider, customOAuth2User.providerId, customOAuth2User.name)
 
-        // Redis에 Refresh Token 저장
-        val key = "$dbName:${customOAuth2User.providerId}"
+        val key = "$dbName:${customOAuth2User.provider}:${customOAuth2User.providerId}"
         redisTemplate.opsForValue().set(
             key,
             refreshToken,
@@ -53,14 +50,12 @@ class OAuth2AuthenticationSuccessHandler(
             TimeUnit.MILLISECONDS
         )
 
-        // 프론트엔드 리다이렉트 URL 구성 (토큰을 쿼리 파라미터로 전달)
         val targetUrl = UriComponentsBuilder.fromUriString("/oauth2/success")
             .queryParam("accessToken", accessToken)
             .queryParam("refreshToken", refreshToken)
             .build()
             .toUriString()
 
-        // 세션에 저장된 인증 관련 임시 데이터 제거
         clearAuthenticationAttributes(request)
         redirectStrategy.sendRedirect(request, response, targetUrl)
     }

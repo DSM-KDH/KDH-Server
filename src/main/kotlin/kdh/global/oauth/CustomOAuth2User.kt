@@ -13,6 +13,7 @@ import org.springframework.security.oauth2.core.user.OAuth2User
 class CustomOAuth2User(
     private val oauth2User: OAuth2User? = null,
     val userName: String,
+    val provider: String,
     val providerId: String,
 ) : OAuth2User {
     /**

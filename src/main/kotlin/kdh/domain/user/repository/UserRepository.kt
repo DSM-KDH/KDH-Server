@@ -6,6 +6,6 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface UserRepository : JpaRepository<User, Long> {
-    fun findByProviderId(providerId: String): User?
-    fun deleteByProviderId(providerId: String)
+    fun findByProviderAndProviderId(provider: String, providerId: String): User?
+    fun deleteByProviderAndProviderId(provider: String, providerId: String)
 }

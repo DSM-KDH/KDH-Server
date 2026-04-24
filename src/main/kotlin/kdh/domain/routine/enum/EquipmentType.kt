@@ -1,0 +1,7 @@
+package kdh.domain.routine.enum
+
+enum class EquipmentType {
+    BARBELL, DUMBBELL, CABLE, MACHINE, BENCH, PULL_UP_BAR,
+    BAND, LAT_PULL_DOWN, SMITH_MACHINE, LEG_PRESS,
+    PEC_DECK_FLY, DIP_STATION, FOAM_ROLLER, CYCLE
+}

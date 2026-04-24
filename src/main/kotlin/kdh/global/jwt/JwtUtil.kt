@@ -20,36 +20,21 @@ class JwtUtil(
 ) {
     private val secretKey: SecretKey = Keys.hmacShaKeyFor(jwtProperties.secret.toByteArray())
 
-    /**
-     * Access Token 생성
-     *
-     * @return 생성된 Access Token
-     */
-    fun generateAccessToken(providerId: String, name:String): String {
-        return generateToken(providerId, name, jwtProperties.accessTokenValidity)
+    fun generateAccessToken(provider: String, providerId: String, name: String): String {
+        return generateToken(provider, providerId, name, jwtProperties.accessTokenValidity)
     }
 
-    /**
-     * Refresh Token 생성
-     *
-     * @return 생성된 Refresh Token
-     */
-    fun generateRefreshToken(providerId: String, name:String): String {
-        return generateToken(providerId, name, jwtProperties.refreshTokenValidity)
+    fun generateRefreshToken(provider: String, providerId: String, name: String): String {
+        return generateToken(provider, providerId, name, jwtProperties.refreshTokenValidity)
     }
 
-    /**
-     * JWT 토큰 생성 내부 메서드
-     *
-     * @param validityInMilliseconds 토큰 유효 시간 (밀리초)
-     * @return 생성된 JWT 토큰
-     */
-    private fun generateToken(providerId: String, name:String, validityInMilliseconds: Long): String {
+    private fun generateToken(provider: String, providerId: String, name: String, validityInMilliseconds: Long): String {
         val now = Date()
         val validity = Date(now.time + validityInMilliseconds)
 
         return Jwts.builder()
             .subject(providerId)
+            .claim("provider", provider)
             .claim("name", name)
             .issuedAt(now)
             .expiration(validity)
@@ -57,12 +42,6 @@ class JwtUtil(
             .compact()
     }
 
-    /**
-     * JWT 토큰에서 Claims 추출
-     *
-     * @param token JWT 토큰
-     * @return 토큰의 Claims
-     */
     fun getClaims(token: String): Claims {
         return Jwts.parser()
             .verifyWith(secretKey)
@@ -71,28 +50,18 @@ class JwtUtil(
             .payload
     }
 
-    /**
-     * JWT 토큰에서 사용자 ID 추출
-     *
-     * @param token JWT 토큰
-     * @return 사용자 ID
-     */
+    fun getProvider(token: String): String {
+        return getClaims(token)["provider"] as String
+    }
+
     fun getProviderId(token: String): String {
         return getClaims(token).subject
     }
 
     fun getName(token: String): String {
-        val claims = getClaims(token)
-        // "name"이라는 키로 저장된 값을 꺼내옴
-        return claims["name"]?.toString() ?: ""
+        return getClaims(token)["name"] as String
     }
 
-    /**
-     * JWT 토큰 유효성 검증
-     *
-     * @param token JWT 토큰
-     * @return 유효한 토큰이면 true, 그렇지 않으면 false
-     */
     fun validateToken(token: String): Boolean {
         return try {
             val claims = getClaims(token)
@@ -102,9 +71,6 @@ class JwtUtil(
         }
     }
 
-    /**
-     * @return 만료시간 반환
-     */
     fun getRefreshTokenValidity(): Long {
         return jwtProperties.refreshTokenValidity
     }

@@ -2,6 +2,12 @@ spring:
   application:
     name: KDH
 
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
   data:
     redis:
       host: localhost
@@ -34,7 +40,7 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
-            redirect-uri: ${DOMAIN}/login/oauth2/code/google
+            redirect-uri: ${DOMAIN}
             scope:
               - email
               - profile
@@ -58,3 +64,8 @@ logging:
   level:
     org.hibernate.SQL: debug
     org.hibernate.orm.jdbc.bind: trace
+
+external:
+  api:
+    workout:
+      url: ${ROUTINE_API_URL}

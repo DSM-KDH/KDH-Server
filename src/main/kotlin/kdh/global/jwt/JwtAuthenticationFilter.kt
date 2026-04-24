@@ -32,18 +32,16 @@ class JwtAuthenticationFilter(
         filterChain: FilterChain
     ) {
         try {
-            // Authorization 헤더에서 JWT 토큰 추출
             val token = extractToken(request)
 
-            // 토큰이 존재하고 유효한 경우
             if (token != null && jwtUtil.validateToken(token)) {
-                // 토큰에서 사용자 정보 추출
+                val provider = jwtUtil.getProvider(token)
                 val providerId = jwtUtil.getProviderId(token)
                 val name = jwtUtil.getName(token)
 
-                // 인증 토큰 생성
                 val authentication = UsernamePasswordAuthenticationToken(
                     CustomOAuth2User(
+                        provider = provider,
                         providerId = providerId,
                         userName = name
                     ),
@@ -52,15 +50,12 @@ class JwtAuthenticationFilter(
                 )
                 authentication.details = WebAuthenticationDetailsSource().buildDetails(request)
 
-                // SecurityContext에 인증 정보 설정
                 SecurityContextHolder.getContext().authentication = authentication
             }
         } catch (e: Exception) {
-            // 토큰 검증 실패 시 로깅 (선택적)
             logger.error("JWT 인증 실패: ${e.message}")
         }
 
-        // 다음 필터로 요청 전달
         filterChain.doFilter(request, response)
     }
 

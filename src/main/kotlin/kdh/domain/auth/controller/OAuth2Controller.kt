@@ -106,13 +106,13 @@ class OAuth2Controller(
     @GetMapping("/login-test")
     @Operation(summary = "로그인 테스트", description = "로그인된 사용자의 정보를 반환합니다.")
     fun loginTest(@AuthenticationPrincipal user: CustomOAuth2User): ResponseEntity<Map<String, String>> {
-        return ResponseEntity.ok(mapOf("providerId" to user.providerId, "name" to user.name))
+        return ResponseEntity.ok(mapOf("provider" to user.provider, "providerId" to user.providerId, "name" to user.name))
     }
 
     @PostMapping("/logout")
     @Operation(summary = "로그아웃", description = "로그아웃을 처리하고 Refresh Token을 삭제합니다.")
     fun logout(@AuthenticationPrincipal user: CustomOAuth2User): ResponseEntity<Map<String, Any>> {
-        val key = "$dbName:${user.providerId}"
+        val key = "$dbName:${user.provider}:${user.providerId}"
         redisTemplate.delete(key)
         return ResponseEntity.ok(mapOf("success" to true, "message" to "로그아웃 되었습니다."))
     }
@@ -121,8 +121,8 @@ class OAuth2Controller(
     @Transactional
     @Operation(summary = "회원 탈퇴", description = "회원 탈퇴를 처리하고 사용자 정보와 Refresh Token을 삭제합니다.")
     fun withdrawal(@AuthenticationPrincipal user: CustomOAuth2User): ResponseEntity<Map<String, Any>> {
-        userRepository.deleteByProviderId(user.providerId)
-        val key = "$dbName:${user.providerId}"
+        userRepository.deleteByProviderAndProviderId(user.provider, user.providerId)
+        val key = "$dbName:${user.provider}:${user.providerId}"
         redisTemplate.delete(key)
         return ResponseEntity.ok(mapOf("success" to true, "message" to "회원 탈퇴 되었습니다."))
     }
