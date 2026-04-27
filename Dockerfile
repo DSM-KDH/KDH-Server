@@ -18,13 +18,17 @@ RUN ./gradlew clean bootJar -x test
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# 빌드 스테이지에서 생성된 jar 파일 가져오기
-# -plain.jar가 같이 생성될 수 있어서 명확하게 패턴 지정
-COPY --from=builder /build/build/libs/*[0-9].jar app.jar
+# [수정] 빌드된 jar 파일을 확실하게 가져오기
+# 보통 bootJar는 build/libs 아래에 하나만 생성됨
+COPY --from=builder /build/build/libs/*.jar app.jar
+
+# 파일이 제대로 복사됐는지 권한 체크 (혹시 모르니)
+RUN chmod +x app.jar
 
 RUN apk add --no-cache tzdata
 ENV TZ=Asia/Seoul
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "-Duser.timezone=Asia/Seoul", "/app/app.jar"]
+# [수정] 절대 경로 대신 상대 경로로 실행
+ENTRYPOINT ["java", "-jar", "-Duser.timezone=Asia/Seoul", "app.jar"]
