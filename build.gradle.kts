@@ -2,7 +2,6 @@ plugins {
     kotlin("jvm") version "1.9.24"
     kotlin("plugin.spring") version "1.9.24"
     id("org.springframework.boot") version "3.3.1"
-    id("io.spring.dependency-management") version "1.1.5"
     kotlin("plugin.jpa") version "1.9.24"
 }
 
@@ -26,13 +25,11 @@ repositories {
     mavenCentral()
 }
 
-dependencyManagement {
-    imports {
-        mavenBom("software.amazon.awssdk:bom:2.42.36")
-    }
-}
-
 dependencies {
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:3.3.1"))
+    implementation(platform("software.amazon.awssdk:bom:2.42.36"))
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:3.3.1"))
+
     implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")

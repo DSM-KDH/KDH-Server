@@ -1,5 +1,7 @@
 package kdh.domain.routine.dto
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+
 // 1. 최상위 요청 객체
 data class ExternalWorkoutApiRequest(
     val input: WorkoutApiInput,
@@ -7,7 +9,13 @@ data class ExternalWorkoutApiRequest(
     val kwargs: Map<String, Any> = emptyMap()
 )
 
-// 2. 'input' 필드에 해당하는 객체
+// LangServe /invoke 응답은 최종 그래프 상태를 output 필드에 담아 반환한다.
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class ExternalWorkoutApiResponse(
+    val output: WorkoutApiInput
+)
+
+// 2. 'input' 필드에 해당하는 객체이자 LangGraph가 반환하는 상태 객체
 data class WorkoutApiInput(
     val day: Int,
     val phase: Int,

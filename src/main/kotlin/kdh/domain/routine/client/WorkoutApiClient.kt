@@ -7,6 +7,7 @@ import jakarta.annotation.PostConstruct
 import kdh.domain.routine.dto.*
 import kdh.domain.routine.enum.*
 import org.springframework.beans.factory.annotation.Value
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.bodyToMono
@@ -19,33 +20,77 @@ class WorkoutApiClient(
 
     private lateinit var webClient: WebClient
     private val objectMapper: ObjectMapper = jacksonObjectMapper() // 자체적으로 ObjectMapper 인스턴스 생성
+    private val log = LoggerFactory.getLogger(javaClass)
 
     @PostConstruct
     fun init() {
         webClient = WebClient.builder().baseUrl(workoutApiUrl).build()
+        log.info("Workout API client initialized. baseUrl={}", workoutApiUrl)
     }
 
     fun generateSingleWeekRoutine(request: RoutineCreateRequest, phase: Int): List<Map<String, Any>> {
         val threadId = UUID.randomUUID().toString()
         var currentState = createInitialState(request, phase, threadId)
         val weeklyWorkouts = mutableListOf<Map<String, Any>>()
+        val targetWorkoutCount = request.schedule.activeDays.size
+        val startedAt = System.currentTimeMillis()
+        var attempt = 1
 
-        while (true) {
+        log.info(
+            "Workout API weekly generation started. threadId={}, phase={}, targetWorkoutCount={}",
+            threadId,
+            phase,
+            targetWorkoutCount
+        )
+
+        while (weeklyWorkouts.size < targetWorkoutCount) {
+            val requestStartedAt = System.currentTimeMillis()
+            log.info(
+                "Calling Workout API. threadId={}, attempt={}, currentDay={}, createdCount={}",
+                threadId,
+                attempt,
+                currentState.input.day,
+                weeklyWorkouts.size
+            )
             val responseJson = postToWorkoutApi(currentState)
-            val responseData = objectMapper.readValue<Map<String, Any>>(responseJson)
-            val inputJson = objectMapper.writeValueAsString(responseData["input"])
-            val responseState = objectMapper.readValue<WorkoutApiInput>(inputJson)
+            val responseState = objectMapper.readValue<ExternalWorkoutApiResponse>(responseJson).output
+            log.info(
+                "Workout API response received. threadId={}, attempt={}, responseDay={}, done={}, hasCurrentWorkout={}, responseBytes={}, elapsedMs={}",
+                threadId,
+                attempt,
+                responseState.day,
+                responseState.done,
+                responseState.current_workout.isNotEmpty(),
+                responseJson.toByteArray().size,
+                System.currentTimeMillis() - requestStartedAt
+            )
 
             if (responseState.current_workout.isNotEmpty()) {
                 weeklyWorkouts.add(responseState.current_workout)
+                log.info(
+                    "Workout added to weekly result. threadId={}, generatedCount={}, sectionKeys={}",
+                    threadId,
+                    weeklyWorkouts.size,
+                    responseState.current_workout.keys
+                )
             }
 
-            if (responseState.done) {
+            // Python graph는 생성 직후 interrupt되므로 done이 늦게 오거나 안 올 수 있다.
+            // Kotlin 쪽에서는 요청한 운동 일수를 채우면 주간 생성이 끝난 것으로 본다.
+            if (responseState.done || weeklyWorkouts.size >= targetWorkoutCount) {
                 break
             }
 
             currentState = createNextState(responseState)
+            attempt += 1
         }
+        log.info(
+            "Workout API weekly generation finished. threadId={}, phase={}, generatedCount={}, elapsedMs={}",
+            threadId,
+            phase,
+            weeklyWorkouts.size,
+            System.currentTimeMillis() - startedAt
+        )
         return weeklyWorkouts
     }
 
@@ -79,8 +124,7 @@ class WorkoutApiClient(
 
     private fun createNextState(prevState: WorkoutApiInput): ExternalWorkoutApiRequest {
         val input = prevState.copy(
-            user_feedback = "CONTINUE",
-            created_workouts = prevState.created_workouts + listOf(prevState.current_workout)
+            user_feedback = "CONTINUE"
         )
         val config = WorkoutApiConfig(configurable = Configurable(thread_id = prevState.thread_id))
         return ExternalWorkoutApiRequest(input = input, config = config)

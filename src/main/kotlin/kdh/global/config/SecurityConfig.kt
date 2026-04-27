@@ -37,7 +37,7 @@ class SecurityConfig(
      * - CSRF 비활성화 (JWT 사용으로 불필요)
      * - JWT 인증 필터 추가
      * - OAuth2 로그인 설정
-     * - 세션 STATELESS 설정
+     * - OAuth2 로그인 과정에서 state 검증용 세션이 필요하므로 필요한 경우에만 세션 생성
      */
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -57,7 +57,7 @@ class SecurityConfig(
                     ).permitAll()
                     .anyRequest().authenticated()
             }
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
             .httpBasic { it.disable() }
             .formLogin { it.disable() }
             // JWT 인증 필터를 UsernamePasswordAuthenticationFilter 이전에 추가
