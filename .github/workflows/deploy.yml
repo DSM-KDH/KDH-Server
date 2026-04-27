@@ -64,6 +64,30 @@ jobs:
             docker run -d -p 8080:8080 --name my-spring-app \
               --env-file .env \
               ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh
+            
+            # 6. Health Check (최대 2분 동안 3초 간격으로 확인)
+            echo "Starting health check for Swagger UI..."
+            MAX_RETRIES=40  # 40번 * 3초 = 120초(2분)
+            RETRY_COUNT=0
+            HEALTH_URL="http://localhost:8080/swagger-ui/index.html"
 
-            # 6. 사용하지 않는 이미지 정리
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              # HTTP 상태 코드가 200인지 확인
+              HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" $HEALTH_URL)
+              
+              if [ "$HTTP_STATUS" -eq 200 ]; then
+                echo "Successfully deployed! Swagger UI is up."
+                exit 0
+              fi
+
+              echo "Waiting for server... (Attempt: $((RETRY_COUNT+1))/$MAX_RETRIES)"
+              RETRY_COUNT=$((RETRY_COUNT+1))
+              sleep 3
+            done
+
+            echo "Health check failed after 2 minutes."
+            docker logs my-spring-app  # 실패 시 원인 파악을 위해 로그 출력
+            exit 1
+
+            # 7. 사용하지 않는 이미지 정리 (Health check 성공 시 실행되도록 위치 조정 가능)
             docker image prune -f
