@@ -5,7 +5,7 @@ WORKDIR /build
 # 그래들 캐시 활용을 위해 설정 파일 먼저 복사
 COPY gradlew .
 COPY gradle gradle
-COPY build.gradle settings.gradle ./
+COPY build.gradle* settings.gradle* ./
 RUN chmod +x gradlew
 RUN ./gradlew build -x test --stacktrace || return 0
 
