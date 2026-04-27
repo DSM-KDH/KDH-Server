@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit
 class OAuth2AuthenticationSuccessHandler(
     private val jwtUtil: JwtUtil,
     private val redisTemplate: RedisTemplate<String, Any>,
-    @Value("\${DB_NAME}") private val dbName: String
+    @Value("\${DB_NAME}") private val dbName: String,
+    @Value("\${app.oauth.success-redirect-uri}") private val successRedirectUri: String
 ) : SimpleUrlAuthenticationSuccessHandler() {
 
     /**
@@ -50,7 +51,7 @@ class OAuth2AuthenticationSuccessHandler(
             TimeUnit.MILLISECONDS
         )
 
-        val targetUrl = UriComponentsBuilder.fromUriString("/oauth2/success")
+        val targetUrl = UriComponentsBuilder.fromUriString(successRedirectUri)
             .queryParam("accessToken", accessToken)
             .queryParam("refreshToken", refreshToken)
             .build()
