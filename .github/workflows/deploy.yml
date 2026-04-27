@@ -34,9 +34,9 @@ jobs:
 
       - name: Docker build & push
         run: |
-          # 이미지 태그를 'latest'로 설정 (이미지 이름은 자유롭게 수정 가능)
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/my-spring-app:latest .
-          docker push ${{ secrets.DOCKER_USERNAME }}/my-spring-app:latest
+          # 이미지 태그를 'kdh'로 설정 (이미지 이름은 자유롭게 수정 가능)
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh .
+          docker push ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh
 
 # 우분투 서버에 접속해서 .env 파일 생성 후 도커 실행
       - name: Deploy to Server
@@ -58,7 +58,7 @@ jobs:
             docker rm my-spring-app || true
 
             # 4. 최신 이미지 풀
-            docker pull ${{ secrets.DOCKER_USERNAME }}/my-spring-app:latest
+            docker pull ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh
 
             # 5. --env-file 옵션으로 .env 파일 전체 적용해서 실행
             docker run -d -p 8080:8080 --name my-spring-app \
