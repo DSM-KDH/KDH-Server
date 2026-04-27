@@ -63,7 +63,7 @@ jobs:
             # 5. --env-file 옵션으로 .env 파일 전체 적용해서 실행
             docker run -d -p 8080:8080 --name my-spring-app \
               --env-file .env \
-              ${{ secrets.DOCKER_USERNAME }}/my-spring-app:latest
+              ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh
 
             # 6. 사용하지 않는 이미지 정리
             docker image prune -f
