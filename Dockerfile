@@ -19,7 +19,3 @@ WORKDIR /app
 
 # 빌드 단계에서 생성된 JAR 파일만 복사
 COPY --from=build /app/build/libs/*.jar app.jar
-
-# 컨테이너가 시작될 때 실행할 명령어
-# Jenkinsfile에서 넘겨준 환경변수(DB_URL 등)가 여기서 적용됨
-ENTRYPOINT ["java", "-jar", "app.jar"]
