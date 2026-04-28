@@ -3,14 +3,14 @@ spring:
     name: KDH
 
   rabbitmq:
-    host: localhost
+    host: ${HOST}
     port: 5672
     username: guest
     password: guest
 
   data:
     redis:
-      host: localhost
+      host: ${HOST}
       port: 6379
 
   datasource:
