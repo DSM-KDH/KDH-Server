@@ -2,15 +2,17 @@ package kdh.domain.routine.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import kdh.domain.routine.dto.ExerciseCompletionResponse
 import kdh.domain.routine.dto.RoutineCreateRequest
 import kdh.domain.routine.dto.RoutineCreationMessage
-import kdh.domain.routine.dto.RoutineDetailResponse
-import kdh.domain.routine.dto.RoutineSummaryResponse
-import kdh.domain.routine.repository.RoutineRepository
+import kdh.domain.routine.dto.RoutineDateResponse
+import kdh.domain.routine.dto.RoutineWorkoutItemResponse
+import kdh.domain.routine.repository.DailyWorkoutRepository
+import kdh.domain.routine.repository.ExerciseDetailRepository
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
-import org.springframework.amqp.rabbit.core.RabbitTemplate
 import org.slf4j.LoggerFactory
+import org.springframework.amqp.rabbit.core.RabbitTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -20,7 +22,8 @@ class RoutineService(
     private val rabbitTemplate: RabbitTemplate,
     private val userRepository: UserRepository,
     private val userProfileHistoryRepository: UserProfileHistoryRepository,
-    private val routineRepository: RoutineRepository
+    private val dailyWorkoutRepository: DailyWorkoutRepository,
+    private val exerciseDetailRepository: ExerciseDetailRepository
 ) {
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val log = LoggerFactory.getLogger(javaClass)
@@ -36,39 +39,49 @@ class RoutineService(
 
         val messagePayload = RoutineCreationMessage(provider = provider, providerId = providerId, request = request)
         val message = objectMapper.writeValueAsString(messagePayload)
-        log.info(
-            "Publishing routine creation message. exchange={}, routingKey={}, provider={}, providerId={}, payloadBytes={}",
-            "routine.exchange",
-            "routine.create.key",
-            provider,
-            providerId,
-            message.toByteArray().size
-        )
         rabbitTemplate.convertAndSend("routine.exchange", "routine.create.key", message)
         log.info("Routine creation message published. provider={}, providerId={}", provider, providerId)
     }
 
     @Transactional(readOnly = true)
-    fun getMyRoutines(provider: String, providerId: String): List<RoutineSummaryResponse> {
-        return routineRepository.findDistinctByUserProviderAndUserProviderIdOrderByIdDesc(provider, providerId)
-            .map(RoutineSummaryResponse::from)
+    fun getMyRoutineByDate(date: LocalDate, provider: String, providerId: String): RoutineDateResponse {
+        val canComplete = date == LocalDate.now()
+        val workouts = dailyWorkoutRepository
+            .findByRoutineUserProviderAndRoutineUserProviderIdAndWorkoutDate(provider, providerId, date)
+            .flatMap { dailyWorkout ->
+                dailyWorkout.sections.flatMap { section ->
+                    section.exercises.map { exercise ->
+                        RoutineWorkoutItemResponse.from(section, exercise, canComplete)
+                    }
+                }
+            }
+
+        return RoutineDateResponse(date = date, workouts = workouts)
     }
 
-    @Transactional(readOnly = true)
-    fun getMyRoutineDates(provider: String, providerId: String): List<LocalDate> {
-        val lastDayOfPreviousMonth = LocalDate.now().withDayOfMonth(1).minusDays(1)
+    @Transactional
+    fun updateExerciseCompletion(
+        exerciseId: Long,
+        completed: Boolean,
+        provider: String,
+        providerId: String
+    ): ExerciseCompletionResponse {
+        val exercise = exerciseDetailRepository
+            .findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
+                exerciseId,
+                provider,
+                providerId
+            )
+            ?: throw IllegalArgumentException("운동을 찾을 수 없습니다: $exerciseId")
 
-        return routineRepository.findDistinctByUserProviderAndUserProviderIdOrderByIdDesc(provider, providerId)
-            .flatMap { routine -> routine.dailyWorkouts.mapNotNull { it.workoutDate } }
-            .filter { !it.isAfter(lastDayOfPreviousMonth) }
-            .sorted()
-    }
+        val workoutDate = exercise.section?.dailyWorkout?.workoutDate
+            ?: throw IllegalArgumentException("운동 날짜를 찾을 수 없습니다: $exerciseId")
 
-    @Transactional(readOnly = true)
-    fun getMyRoutine(id: Long, provider: String, providerId: String): RoutineDetailResponse {
-        val routine = routineRepository.findByIdAndUserProviderAndUserProviderId(id, provider, providerId)
-            ?: throw IllegalArgumentException("루틴을 찾을 수 없습니다: $id")
+        if (workoutDate != LocalDate.now()) {
+            throw IllegalArgumentException("당일 운동만 완료 처리할 수 있습니다.")
+        }
 
-        return RoutineDetailResponse.from(routine)
+        exercise.completed = completed
+        return ExerciseCompletionResponse(exerciseId = exercise.id, completed = exercise.completed)
     }
 }

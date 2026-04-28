@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kdh.domain.routine.client.WorkoutApiClient
 import kdh.domain.routine.dto.RoutineCreateRequest
-import kdh.domain.routine.entity.*
+import kdh.domain.routine.entity.DailyWorkout
+import kdh.domain.routine.entity.ExerciseDetail
+import kdh.domain.routine.entity.Routine
+import kdh.domain.routine.entity.WorkoutSection
 import kdh.domain.routine.repository.RoutineRepository
 import kdh.domain.user.repository.UserRepository
 import kdh.infra.fcm.FcmService
@@ -13,6 +16,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 
 @Service
 class RoutineGenerationService(
@@ -27,64 +31,35 @@ class RoutineGenerationService(
     @Transactional
     fun generateMultiWeekRoutine(request: RoutineCreateRequest, provider: String, providerId: String) {
         val startedAt = System.currentTimeMillis()
-        log.info(
-            "Routine generation transaction started. provider={}, providerId={}, totalWeeks={}, activeDaysPerWeek={}",
-            provider,
-            providerId,
-            request.schedule.totalWeeks,
-            request.schedule.activeDays.size
-        )
         val user = userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $provider/$providerId")
 
-        val newRoutine = Routine(user = user, totalWeeks = request.schedule.totalWeeks)
+        val routineStartDate = LocalDate.now()
+        val newRoutine = Routine(user = user, totalWeeks = request.schedule.totalWeeks, startDate = routineStartDate)
 
-        val workoutDates = buildWorkoutDates(request)
         var dayCounter = 1
         for (week in 1..request.schedule.totalWeeks) {
             val phase = determinePhaseForWeek(week)
-            log.info(
-                "Generating weekly workouts. provider={}, providerId={}, week={}, phase={}, targetDays={}",
-                provider,
-                providerId,
-                week,
-                phase,
-                request.schedule.activeDays.size
-            )
             val weeklyWorkoutsJson = workoutApiClient.generateSingleWeekRoutine(request, phase)
-            log.info(
-                "Weekly workouts generated. provider={}, providerId={}, week={}, generatedDays={}",
-                provider,
-                providerId,
-                week,
-                weeklyWorkoutsJson.size
-            )
+            val workoutDates = request.schedule.activeDays.map { activeDay ->
+                routineStartDate
+                    .plusWeeks((week - 1).toLong())
+                    .with(TemporalAdjusters.nextOrSame(activeDay.toJavaDayOfWeek()))
+            }
 
-            for (workoutJson in weeklyWorkoutsJson) {
-                val dailyWorkout = parseAndCreateDailyWorkout(workoutJson, dayCounter, workoutDates.getOrNull(dayCounter - 1))
-                dayCounter++
-                log.info(
-                    "Daily workout parsed. provider={}, providerId={}, day={}, workoutDate={}, sectionCount={}, exerciseCount={}",
-                    provider,
-                    providerId,
-                    dailyWorkout.day,
-                    dailyWorkout.workoutDate,
-                    dailyWorkout.sections.size,
-                    dailyWorkout.sections.sumOf { it.exercises.size }
-                )
-                newRoutine.addDailyWorkout(dailyWorkout)
+            for ((index, workoutJson) in weeklyWorkoutsJson.withIndex()) {
+                val workoutDate = workoutDates.getOrNull(index) ?: routineStartDate.plusDays((dayCounter - 1).toLong())
+                newRoutine.addDailyWorkout(parseAndCreateDailyWorkout(workoutJson, dayCounter++, workoutDate))
             }
         }
 
         val savedRoutine = routineRepository.save(newRoutine)
         log.info(
-            "Routine saved. routineId={}, provider={}, providerId={}, dailyWorkoutCount={}, sectionCount={}, exerciseCount={}, elapsedMs={}",
+            "Routine saved. routineId={}, provider={}, providerId={}, dailyWorkoutCount={}, elapsedMs={}",
             savedRoutine.id,
             provider,
             providerId,
             savedRoutine.dailyWorkouts.size,
-            savedRoutine.dailyWorkouts.sumOf { it.sections.size },
-            savedRoutine.dailyWorkouts.sumOf { dailyWorkout -> dailyWorkout.sections.sumOf { it.exercises.size } },
             System.currentTimeMillis() - startedAt
         )
 
@@ -92,23 +67,55 @@ class RoutineGenerationService(
             "루틴 생성 완료!",
             "${request.schedule.totalWeeks}주 동안의 맞춤형 운동 루틴이 준비되었습니다."
         )
-        log.info("Routine completion notification requested. routineId={}, provider={}, providerId={}", savedRoutine.id, provider, providerId)
     }
 
-    private fun buildWorkoutDates(request: RoutineCreateRequest): List<LocalDate> {
-        val activeDays = request.schedule.activeDays.map { it.toJavaDayOfWeek() }.toSet()
-        val targetCount = request.schedule.totalWeeks * request.schedule.activeDays.size
-        val workoutDates = mutableListOf<LocalDate>()
-        var date = LocalDate.now()
+    private fun parseAndCreateDailyWorkout(
+        workoutJson: Map<String, Any>,
+        day: Int,
+        workoutDate: LocalDate
+    ): DailyWorkout {
+        val dailyWorkout = DailyWorkout(day = day, workoutDate = workoutDate)
 
-        while (workoutDates.size < targetCount) {
-            if (date.dayOfWeek in activeDays) {
-                workoutDates.add(date)
+        workoutJson.forEach { (sectionName, exercisesRaw) ->
+            if (exercisesRaw !is List<*>) {
+                log.warn("Skipping unexpected workout section payload. day={}, sectionName={}", day, sectionName)
+                return@forEach
             }
-            date = date.plusDays(1)
+
+            val workoutSection = WorkoutSection(name = sectionName)
+            val exercisesList = objectMapper.convertValue(
+                exercisesRaw,
+                object : TypeReference<List<Map<String, Any>>>() {}
+            )
+
+            exercisesList
+                .map(::createExerciseDetail)
+                .forEach(workoutSection::addExercise)
+
+            dailyWorkout.addSection(workoutSection)
         }
 
-        return workoutDates
+        return dailyWorkout
+    }
+
+    private fun createExerciseDetail(exerciseMap: Map<String, Any>): ExerciseDetail {
+        return ExerciseDetail(
+            exerciseName = exerciseMap["exercise_name"] as? String
+                ?: exerciseMap["exerciseName"] as? String
+                ?: exerciseMap["exercise"] as? String
+                ?: "이름 없음",
+            repsTime = exerciseMap["reps_time"]?.toString()
+                ?: exerciseMap["repsTime"]?.toString()
+                ?: exerciseMap["reps"]?.toString()
+        )
+    }
+
+    private fun determinePhaseForWeek(week: Int): Int {
+        return when {
+            week == 1 -> 1
+            week <= 3 -> 2
+            else -> 3
+        }
     }
 
     private fun kdh.domain.routine.enum.DayOfWeek.toJavaDayOfWeek(): java.time.DayOfWeek {
@@ -120,85 +127,6 @@ class RoutineGenerationService(
             kdh.domain.routine.enum.DayOfWeek.FRI -> java.time.DayOfWeek.FRIDAY
             kdh.domain.routine.enum.DayOfWeek.SAT -> java.time.DayOfWeek.SATURDAY
             kdh.domain.routine.enum.DayOfWeek.SUN -> java.time.DayOfWeek.SUNDAY
-        }
-    }
-
-    private fun parseAndCreateDailyWorkout(workoutJson: Map<String, Any>, day: Int, workoutDate: LocalDate?): DailyWorkout {
-        val dailyWorkout = DailyWorkout(day = day, workoutDate = workoutDate)
-
-        workoutJson.forEach { (sectionName, exercisesRaw) ->
-            if (exercisesRaw is List<*>) {
-                val workoutSection = WorkoutSection(name = sectionName)
-                
-                val exercisesList = objectMapper.convertValue(exercisesRaw, object : TypeReference<List<Map<String, Any>>>() {})
-
-                exercisesList.forEach { exerciseMap ->
-                    // API는 exercise 한 개와 문자열 alternatives 배열을 한 묶음으로 내려준다.
-                    val mainExercise = createExerciseDetail(exerciseMap, isAlternative = false)
-                    workoutSection.addExercise(mainExercise)
-
-                    createAlternativeExercises(exerciseMap["alternatives"])
-                        .forEach(workoutSection::addExercise)
-                }
-                dailyWorkout.addSection(workoutSection)
-            } else {
-                log.warn(
-                    "Skipping unexpected workout section payload. day={}, sectionName={}, payloadType={}",
-                    day,
-                    sectionName,
-                    exercisesRaw.javaClass.name
-                )
-            }
-        }
-        return dailyWorkout
-    }
-
-    private fun createExerciseDetail(rawExerciseMap: Map<String, Any>, isAlternative: Boolean): ExerciseDetail {
-        val exerciseMap = if ("exercise" !in rawExerciseMap && rawExerciseMap["exercise_name"] != null) {
-            rawExerciseMap + ("exercise" to rawExerciseMap["exercise_name"]!!)
-        } else {
-            rawExerciseMap
-        }
-
-        return ExerciseDetail(
-            exerciseName = exerciseMap["exercise"] as? String ?: "이름 없음",
-            repsTime = (exerciseMap["reps_time"]
-                ?: exerciseMap["repsTime"]
-                ?: listOfNotNull(
-                    exerciseMap["sets"]?.toString(),
-                    exerciseMap["reps"]?.toString(),
-                    exerciseMap["rest"]?.toString()
-                ).takeIf { it.isNotEmpty() }?.joinToString(" / "))?.toString(),
-            isAlternative = isAlternative
-        )
-    }
-
-    private fun createAlternativeExercises(alternativesRaw: Any?): List<ExerciseDetail> {
-        return when (alternativesRaw) {
-            is List<*> -> alternativesRaw.mapNotNull { alternative ->
-                when (alternative) {
-                    is String -> ExerciseDetail(
-                        exerciseName = alternative,
-                        isAlternative = true
-                    )
-                    is Map<*, *> -> {
-                        val alternativeMap = alternative.entries
-                            .filter { it.key != null && it.value != null }
-                            .associate { it.key.toString() to it.value as Any }
-                        createExerciseDetail(alternativeMap, isAlternative = true)
-                    }
-                    else -> null
-                }
-            }
-            else -> emptyList()
-        }
-    }
-
-    private fun determinePhaseForWeek(week: Int): Int {
-        return when {
-            week == 1 -> 1
-            week <= 3 -> 2
-            else -> 3
         }
     }
 }
