@@ -5,6 +5,7 @@ import kdh.domain.routine.entity.DailyWorkout
 import kdh.domain.routine.entity.ExerciseDetail
 import kdh.domain.routine.entity.Routine
 import kdh.domain.routine.entity.WorkoutSection
+import java.time.LocalDate
 
 @Schema(description = "루틴 목록 응답")
 data class RoutineSummaryResponse(
@@ -45,6 +46,7 @@ data class RoutineDetailResponse(
 data class DailyWorkoutResponse(
     val id: Long,
     val day: Int,
+    val workoutDate: LocalDate?,
     val sections: List<WorkoutSectionResponse>
 ) {
     companion object {
@@ -52,6 +54,7 @@ data class DailyWorkoutResponse(
             return DailyWorkoutResponse(
                 id = dailyWorkout.id,
                 day = dailyWorkout.day,
+                workoutDate = dailyWorkout.workoutDate,
                 sections = dailyWorkout.sections.map(WorkoutSectionResponse::from)
             )
         }

@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 
 @RestController
 @RequestMapping("/routines")
@@ -110,6 +111,19 @@ class RoutineController(
         @AuthenticationPrincipal principal: CustomOAuth2User
     ): ResponseEntity<List<RoutineSummaryResponse>> {
         return ResponseEntity.ok(routineService.getMyRoutines(principal.provider, principal.providerId))
+    }
+
+    @GetMapping("/dates")
+    @Operation(
+        summary = "내 루틴 날짜 목록 조회",
+        description = "로그인한 사용자에게 연결된 모든 루틴 중 저번달 마지막 날까지의 운동 날짜만 리스트로 조회합니다.",
+        security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    fun getMyRoutineDates(
+        @Parameter(hidden = true)
+        @AuthenticationPrincipal principal: CustomOAuth2User
+    ): ResponseEntity<List<LocalDate>> {
+        return ResponseEntity.ok(routineService.getMyRoutineDates(principal.provider, principal.providerId))
     }
 
     @GetMapping("/{routineId}")

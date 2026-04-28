@@ -12,6 +12,7 @@ import kdh.infra.fcm.FcmService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 
 @Service
 class RoutineGenerationService(
@@ -38,6 +39,7 @@ class RoutineGenerationService(
 
         val newRoutine = Routine(user = user, totalWeeks = request.schedule.totalWeeks)
 
+        val workoutDates = buildWorkoutDates(request)
         var dayCounter = 1
         for (week in 1..request.schedule.totalWeeks) {
             val phase = determinePhaseForWeek(week)
@@ -59,12 +61,14 @@ class RoutineGenerationService(
             )
 
             for (workoutJson in weeklyWorkoutsJson) {
-                val dailyWorkout = parseAndCreateDailyWorkout(workoutJson, dayCounter++)
+                val dailyWorkout = parseAndCreateDailyWorkout(workoutJson, dayCounter, workoutDates.getOrNull(dayCounter - 1))
+                dayCounter++
                 log.info(
-                    "Daily workout parsed. provider={}, providerId={}, day={}, sectionCount={}, exerciseCount={}",
+                    "Daily workout parsed. provider={}, providerId={}, day={}, workoutDate={}, sectionCount={}, exerciseCount={}",
                     provider,
                     providerId,
                     dailyWorkout.day,
+                    dailyWorkout.workoutDate,
                     dailyWorkout.sections.size,
                     dailyWorkout.sections.sumOf { it.exercises.size }
                 )
@@ -91,8 +95,36 @@ class RoutineGenerationService(
         log.info("Routine completion notification requested. routineId={}, provider={}, providerId={}", savedRoutine.id, provider, providerId)
     }
 
-    private fun parseAndCreateDailyWorkout(workoutJson: Map<String, Any>, day: Int): DailyWorkout {
-        val dailyWorkout = DailyWorkout(day = day)
+    private fun buildWorkoutDates(request: RoutineCreateRequest): List<LocalDate> {
+        val activeDays = request.schedule.activeDays.map { it.toJavaDayOfWeek() }.toSet()
+        val targetCount = request.schedule.totalWeeks * request.schedule.activeDays.size
+        val workoutDates = mutableListOf<LocalDate>()
+        var date = LocalDate.now()
+
+        while (workoutDates.size < targetCount) {
+            if (date.dayOfWeek in activeDays) {
+                workoutDates.add(date)
+            }
+            date = date.plusDays(1)
+        }
+
+        return workoutDates
+    }
+
+    private fun kdh.domain.routine.enum.DayOfWeek.toJavaDayOfWeek(): java.time.DayOfWeek {
+        return when (this) {
+            kdh.domain.routine.enum.DayOfWeek.MON -> java.time.DayOfWeek.MONDAY
+            kdh.domain.routine.enum.DayOfWeek.TUE -> java.time.DayOfWeek.TUESDAY
+            kdh.domain.routine.enum.DayOfWeek.WED -> java.time.DayOfWeek.WEDNESDAY
+            kdh.domain.routine.enum.DayOfWeek.THU -> java.time.DayOfWeek.THURSDAY
+            kdh.domain.routine.enum.DayOfWeek.FRI -> java.time.DayOfWeek.FRIDAY
+            kdh.domain.routine.enum.DayOfWeek.SAT -> java.time.DayOfWeek.SATURDAY
+            kdh.domain.routine.enum.DayOfWeek.SUN -> java.time.DayOfWeek.SUNDAY
+        }
+    }
+
+    private fun parseAndCreateDailyWorkout(workoutJson: Map<String, Any>, day: Int, workoutDate: LocalDate?): DailyWorkout {
+        val dailyWorkout = DailyWorkout(day = day, workoutDate = workoutDate)
 
         workoutJson.forEach { (sectionName, exercisesRaw) ->
             if (exercisesRaw is List<*>) {

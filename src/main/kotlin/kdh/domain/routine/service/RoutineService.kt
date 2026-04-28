@@ -13,6 +13,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 
 @Service
 class RoutineService(
@@ -51,6 +52,16 @@ class RoutineService(
     fun getMyRoutines(provider: String, providerId: String): List<RoutineSummaryResponse> {
         return routineRepository.findDistinctByUserProviderAndUserProviderIdOrderByIdDesc(provider, providerId)
             .map(RoutineSummaryResponse::from)
+    }
+
+    @Transactional(readOnly = true)
+    fun getMyRoutineDates(provider: String, providerId: String): List<LocalDate> {
+        val lastDayOfPreviousMonth = LocalDate.now().withDayOfMonth(1).minusDays(1)
+
+        return routineRepository.findDistinctByUserProviderAndUserProviderIdOrderByIdDesc(provider, providerId)
+            .flatMap { routine -> routine.dailyWorkouts.mapNotNull { it.workoutDate } }
+            .filter { !it.isAfter(lastDayOfPreviousMonth) }
+            .sorted()
     }
 
     @Transactional(readOnly = true)
