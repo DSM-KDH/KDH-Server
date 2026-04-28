@@ -15,7 +15,6 @@ import kdh.infra.fcm.FcmService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDate
-import java.time.temporal.TemporalAdjusters
 
 @Service
 class RoutineGenerationService(
@@ -59,7 +58,7 @@ class RoutineGenerationService(
         )
 
         val routineStartDate = LocalDate.now()
-        val routine = routineRepository.saveAndFlush(
+        var routine = routineRepository.saveAndFlush(
             Routine(user = user, totalWeeks = request.schedule.totalWeeks, startDate = routineStartDate)
         )
         log.info(
@@ -72,14 +71,27 @@ class RoutineGenerationService(
         )
 
         var dayCounter = 1
+        val workoutDatesByGenerationOrder = generateWorkoutDates(
+            startDate = routineStartDate,
+            activeDays = request.schedule.activeDays,
+            count = targetWorkoutCount
+        )
+
+        log.info(
+            "Routine workout dates planned. routineId={}, startDate={}, activeDays={}, targetWorkoutCount={}, plannedDates={}",
+            routine.id,
+            routineStartDate,
+            request.schedule.activeDays,
+            targetWorkoutCount,
+            workoutDatesByGenerationOrder
+        )
+
         for (week in 1..request.schedule.totalWeeks) {
             val weekStartedAt = System.currentTimeMillis()
             val phase = determinePhaseForWeek(week)
-            val workoutDates = request.schedule.activeDays.map { activeDay ->
-                routineStartDate
-                    .plusWeeks((week - 1).toLong())
-                    .with(TemporalAdjusters.nextOrSame(activeDay.toJavaDayOfWeek()))
-            }
+            val workoutDates = workoutDatesByGenerationOrder
+                .drop((week - 1) * request.schedule.activeDays.size)
+                .take(request.schedule.activeDays.size)
 
             log.info(
                 "Routine week generation started. routineId={}, week={}, phase={}, activeDays={}, plannedDates={}",
@@ -141,18 +153,18 @@ class RoutineGenerationService(
                 )
 
                 routine.addDailyWorkout(dailyWorkout)
-                val savedRoutine = routineRepository.saveAndFlush(routine)
+                routine = routineRepository.saveAndFlush(routine)
                 log.info(
                     "Daily workout saved. routineId={}, provider={}, providerId={}, week={}, day={}, workoutDate={}, savedDailyWorkoutCount={}, savedSectionCount={}, savedExerciseCount={}",
-                    savedRoutine.id,
+                    routine.id,
                     provider,
                     providerId,
                     week,
                     dayCounter,
                     workoutDate,
-                    savedRoutine.dailyWorkouts.size,
-                    savedRoutine.dailyWorkouts.sumOf { it.sections.size },
-                    savedRoutine.dailyWorkouts.sumOf { daily -> daily.sections.sumOf { it.exercises.size } }
+                    routine.dailyWorkouts.size,
+                    routine.dailyWorkouts.sumOf { it.sections.size },
+                    routine.dailyWorkouts.sumOf { daily -> daily.sections.sumOf { it.exercises.size } }
                 )
 
                 dayCounter += 1
@@ -257,6 +269,25 @@ class RoutineGenerationService(
                 ?: exerciseMap["repsTime"]?.toString()
                 ?: exerciseMap["reps"]?.toString()
         )
+    }
+
+    private fun generateWorkoutDates(
+        startDate: LocalDate,
+        activeDays: List<kdh.domain.routine.enum.DayOfWeek>,
+        count: Int
+    ): List<LocalDate> {
+        val activeJavaDays = activeDays.map { it.toJavaDayOfWeek() }.toSet()
+        val workoutDates = mutableListOf<LocalDate>()
+        var cursor = startDate
+
+        while (workoutDates.size < count) {
+            if (cursor.dayOfWeek in activeJavaDays) {
+                workoutDates.add(cursor)
+            }
+            cursor = cursor.plusDays(1)
+        }
+
+        return workoutDates
     }
 
     private fun determinePhaseForWeek(week: Int): Int {

@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
+import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -48,10 +49,26 @@ class RoutineController(
     fun createRoutine(
         @Valid
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
-            description = "루틴 생성 조건",
+            description = """
+                루틴 생성 조건입니다.
+
+                - `fcmToken`: 루틴 생성 완료 푸시 알림을 받을 FCM 토큰입니다.
+                - `goal.goalType`: 운동 목표입니다. `DIET`는 체중 감량, `HEALTH_CARE`는 건강 관리, `MUSCLE_GAIN`은 근육 증가입니다.
+                - `goal.targetWeight`: 목표 체중입니다. `goalType`이 `DIET`일 때 사용하며, 다른 목표에서는 `null`로 보낼 수 있습니다.
+                - `goal.targetBodyParts`: 집중 발달할 신체 부위 목록입니다. `MUSCLE_GAIN`일 때 주로 사용합니다.
+                - `fitnessLevel`: 현재 운동 수행 능력입니다. `BEGINNER`, `INTERMEDIATE`, `ADVANCED` 중 선택합니다.
+                - `schedule.totalWeeks`: 루틴 기간입니다. 단위는 주이며 1~24 사이로 입력합니다.
+                - `schedule.hoursPerDay`: 하루 운동 목표 시간입니다. 단위는 시간이며 1~5 사이로 입력합니다.
+                - `schedule.activeDays`: 매주 운동할 요일 목록입니다. `MON`~`SUN` 중 선택하며, 목록 개수가 주간 운동 횟수가 됩니다.
+                - `preferredExerciseTypes`: 선호 운동 유형 목록입니다. `CARDIO`, `STRENGTH`, `BODYWEIGHT` 중 하나 이상 선택합니다.
+                - `environment.locations`: 운동 가능한 장소 목록입니다. `HOME`, `GYM`, `OUTDOOR` 중 하나 이상 선택합니다.
+                - `environment.equipments`: 사용 가능한 운동 기구 목록입니다. 선택한 기구를 기반으로 운동을 추천합니다.
+            """,
             required = true,
             content = [
                 Content(
+                    mediaType = "application/json",
+                    schema = Schema(implementation = RoutineCreateRequest::class),
                     examples = [
                         ExampleObject(
                             name = "홈트 초급자 건강관리 루틴",
@@ -104,7 +121,7 @@ class RoutineController(
             요청한 날짜에 있는 내 루틴 운동들을 자세히 조회합니다.
 
             `date`는 `yyyy-MM-dd` 형식으로 전달합니다.
-            응답은 운동 하나하나가 리스트 형태로 내려가며, 각 항목에는 운동 ID, 섹션명, 운동명, 반복/시간, 완료 여부가 포함됩니다.
+            응답은 운동 하나하나가 리스트 형태로 내려가며 각 항목에는 운동 ID, 섹션명, 운동명, 반복/시간, 완료 여부가 포함됩니다.
             운동 완료 처리는 응답에 포함된 `exerciseId` 단위로 할 수 있습니다.
         """,
         security = [SecurityRequirement(name = "Bearer Authentication")]

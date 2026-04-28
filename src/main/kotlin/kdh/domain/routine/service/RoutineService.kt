@@ -54,6 +54,29 @@ class RoutineService(
         }
         log.info("Routine creation profile history validated. provider={}, providerId={}", provider, providerId)
 
+        val today = LocalDate.now()
+        val firstFutureWorkoutDate = dailyWorkoutRepository.findFirstFutureWorkoutDate(
+            provider = provider,
+            providerId = providerId,
+            today = today
+        )
+        if (firstFutureWorkoutDate != null) {
+            log.warn(
+                "Routine creation blocked because future routine exists. provider={}, providerId={}, today={}, firstFutureWorkoutDate={}",
+                provider,
+                providerId,
+                today,
+                firstFutureWorkoutDate
+            )
+            throw IllegalArgumentException("현재일 이후에 예정된 루틴이 있어 새 루틴을 생성할 수 없습니다. 가장 가까운 예정일: $firstFutureWorkoutDate")
+        }
+        log.info(
+            "Routine creation future routine validation passed. provider={}, providerId={}, today={}",
+            provider,
+            providerId,
+            today
+        )
+
         val messagePayload = RoutineCreationMessage(provider = provider, providerId = providerId, request = request)
         val message = objectMapper.writeValueAsString(messagePayload)
         rabbitTemplate.convertAndSend("routine.exchange", "routine.create.key", message)
@@ -86,12 +109,21 @@ class RoutineService(
     @Transactional(readOnly = true)
     fun getMyRoutineDates(provider: String, providerId: String): List<LocalDate> {
         val today = LocalDate.now()
-        return dailyWorkoutRepository.findDistinctWorkoutDatesInRange(
+        val fromDate = today.minusMonths(1)
+        val dates = dailyWorkoutRepository.findDistinctWorkoutDatesFrom(
             provider = provider,
             providerId = providerId,
-            fromDate = today.minusMonths(1),
-            toDate = today
+            fromDate = fromDate
         )
+        log.info(
+            "Routine date list queried. provider={}, providerId={}, fromDate={}, resultCount={}, dates={}",
+            provider,
+            providerId,
+            fromDate,
+            dates.size,
+            dates
+        )
+        return dates
     }
 
     @Transactional

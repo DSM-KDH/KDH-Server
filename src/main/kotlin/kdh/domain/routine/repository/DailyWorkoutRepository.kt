@@ -21,14 +21,28 @@ interface DailyWorkoutRepository : JpaRepository<DailyWorkout, Long> {
         from DailyWorkout d
         where d.routine.user.provider = :provider
           and d.routine.user.providerId = :providerId
-          and d.workoutDate between :fromDate and :toDate
+          and d.workoutDate >= :fromDate
         order by d.workoutDate
         """
     )
-    fun findDistinctWorkoutDatesInRange(
+    fun findDistinctWorkoutDatesFrom(
         @Param("provider") provider: String,
         @Param("providerId") providerId: String,
-        @Param("fromDate") fromDate: LocalDate,
-        @Param("toDate") toDate: LocalDate
+        @Param("fromDate") fromDate: LocalDate
     ): List<LocalDate>
+
+    @Query(
+        """
+        select min(d.workoutDate)
+        from DailyWorkout d
+        where d.routine.user.provider = :provider
+          and d.routine.user.providerId = :providerId
+          and d.workoutDate > :today
+        """
+    )
+    fun findFirstFutureWorkoutDate(
+        @Param("provider") provider: String,
+        @Param("providerId") providerId: String,
+        @Param("today") today: LocalDate
+    ): LocalDate?
 }
