@@ -1,6 +1,7 @@
 package kdh.domain.routine.entity
 
 import jakarta.persistence.*
+import java.time.LocalDate
 
 @Entity
 class DailyWorkout(
@@ -9,6 +10,8 @@ class DailyWorkout(
 
     @Column(nullable = false)
     val day: Int, // 몇 일차 운동인지 (예: 1)
+
+    val workoutDate: LocalDate? = null,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "routine_id", nullable = false)

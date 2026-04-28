@@ -2,6 +2,7 @@ package kdh.domain.routine.entity
 
 import jakarta.persistence.*
 import kdh.domain.user.entity.User
+import java.time.LocalDate
 
 @Entity
 class Routine(
@@ -14,6 +15,8 @@ class Routine(
 
     @Column(nullable = false)
     val totalWeeks: Int,
+
+    val startDate: LocalDate = LocalDate.now(),
 
     // Routine에 속한 모든 일자별 운동들
     @OneToMany(mappedBy = "routine", cascade = [CascadeType.ALL], orphanRemoval = true)

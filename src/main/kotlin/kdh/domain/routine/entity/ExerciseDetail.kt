@@ -7,14 +7,16 @@ class ExerciseDetail(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
+    @Column(nullable = false)
     val exerciseName: String,
-    val sets: String?,
-    val reps: String?,
-    val rest: String?,
-    val description: String?,
+
+    val repsTime: String? = null,
 
     @Column(nullable = false)
-    val isAlternative: Boolean = false, // 대체 운동 여부
+    val isAlternative: Boolean = false,
+
+    @Column(nullable = false)
+    var completed: Boolean = false,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "section_id", nullable = false)
