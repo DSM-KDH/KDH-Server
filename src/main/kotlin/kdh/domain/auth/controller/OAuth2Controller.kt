@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.transaction.annotation.Transactional
@@ -112,8 +113,13 @@ class OAuth2Controller(
     )
     fun loginTest(
         @Parameter(hidden = true)
-        @AuthenticationPrincipal user: CustomOAuth2User
+        @AuthenticationPrincipal user: CustomOAuth2User?
     ): ResponseEntity<Map<String, String>> {
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("message" to "유효한 로그인 정보가 없습니다. Authorization 헤더에 Bearer 토큰을 넣어주세요."))
+        }
+
         return ResponseEntity.ok(mapOf("provider" to user.provider, "providerId" to user.providerId, "name" to user.name))
     }
 
@@ -125,8 +131,13 @@ class OAuth2Controller(
     )
     fun logout(
         @Parameter(hidden = true)
-        @AuthenticationPrincipal user: CustomOAuth2User
+        @AuthenticationPrincipal user: CustomOAuth2User?
     ): ResponseEntity<Map<String, Any>> {
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("success" to false, "message" to "유효한 로그인 정보가 없습니다. Authorization 헤더에 Bearer 토큰을 넣어주세요."))
+        }
+
         val key = "$dbName:${user.provider}:${user.providerId}"
         redisTemplate.delete(key)
         return ResponseEntity.ok(mapOf("success" to true, "message" to "로그아웃 되었습니다."))
@@ -141,8 +152,13 @@ class OAuth2Controller(
     )
     fun withdrawal(
         @Parameter(hidden = true)
-        @AuthenticationPrincipal user: CustomOAuth2User
+        @AuthenticationPrincipal user: CustomOAuth2User?
     ): ResponseEntity<Map<String, Any>> {
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("success" to false, "message" to "유효한 로그인 정보가 없습니다. Authorization 헤더에 Bearer 토큰을 넣어주세요."))
+        }
+
         userRepository.deleteByProviderAndProviderId(user.provider, user.providerId)
         val key = "$dbName:${user.provider}:${user.providerId}"
         redisTemplate.delete(key)

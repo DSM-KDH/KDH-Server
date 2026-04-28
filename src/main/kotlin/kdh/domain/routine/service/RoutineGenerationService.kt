@@ -14,7 +14,6 @@ import kdh.domain.user.repository.UserRepository
 import kdh.infra.fcm.FcmService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 
@@ -28,44 +27,159 @@ class RoutineGenerationService(
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Transactional
     fun generateMultiWeekRoutine(request: RoutineCreateRequest, provider: String, providerId: String) {
         val startedAt = System.currentTimeMillis()
+        val targetWorkoutCount = request.schedule.totalWeeks * request.schedule.activeDays.size
+
+        log.info(
+            "Routine generation started. provider={}, providerId={}, totalWeeks={}, activeDays={}, hoursPerDay={}, goalType={}, targetWeight={}, targetBodyParts={}, fitnessLevel={}, preferredExerciseTypes={}, locations={}, equipments={}, targetWorkoutCount={}",
+            provider,
+            providerId,
+            request.schedule.totalWeeks,
+            request.schedule.activeDays,
+            request.schedule.hoursPerDay,
+            request.goal.goalType,
+            request.goal.targetWeight,
+            request.goal.targetBodyParts,
+            request.fitnessLevel,
+            request.preferredExerciseTypes,
+            request.environment.locations,
+            request.environment.equipments,
+            targetWorkoutCount
+        )
+
         val user = userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $provider/$providerId")
 
+        log.info(
+            "Routine generation owner found. provider={}, providerId={}, userName={}",
+            provider,
+            providerId,
+            user.name
+        )
+
         val routineStartDate = LocalDate.now()
-        val newRoutine = Routine(user = user, totalWeeks = request.schedule.totalWeeks, startDate = routineStartDate)
+        val routine = routineRepository.saveAndFlush(
+            Routine(user = user, totalWeeks = request.schedule.totalWeeks, startDate = routineStartDate)
+        )
+        log.info(
+            "Routine container saved before generation. routineId={}, provider={}, providerId={}, startDate={}, totalWeeks={}",
+            routine.id,
+            provider,
+            providerId,
+            routineStartDate,
+            request.schedule.totalWeeks
+        )
 
         var dayCounter = 1
         for (week in 1..request.schedule.totalWeeks) {
+            val weekStartedAt = System.currentTimeMillis()
             val phase = determinePhaseForWeek(week)
-            val weeklyWorkoutsJson = workoutApiClient.generateSingleWeekRoutine(request, phase)
             val workoutDates = request.schedule.activeDays.map { activeDay ->
                 routineStartDate
                     .plusWeeks((week - 1).toLong())
                     .with(TemporalAdjusters.nextOrSame(activeDay.toJavaDayOfWeek()))
             }
 
+            log.info(
+                "Routine week generation started. routineId={}, week={}, phase={}, activeDays={}, plannedDates={}",
+                routine.id,
+                week,
+                phase,
+                request.schedule.activeDays,
+                workoutDates
+            )
+
+            val weeklyWorkoutsJson = workoutApiClient.generateSingleWeekRoutine(request, phase)
+            log.info(
+                "Routine week generation API completed. routineId={}, week={}, phase={}, generatedDays={}, expectedDays={}, elapsedMs={}",
+                routine.id,
+                week,
+                phase,
+                weeklyWorkoutsJson.size,
+                request.schedule.activeDays.size,
+                System.currentTimeMillis() - weekStartedAt
+            )
+
+            if (weeklyWorkoutsJson.size < request.schedule.activeDays.size) {
+                log.warn(
+                    "Routine week generation returned fewer workouts than expected. routineId={}, week={}, generatedDays={}, expectedDays={}",
+                    routine.id,
+                    week,
+                    weeklyWorkoutsJson.size,
+                    request.schedule.activeDays.size
+                )
+            }
+
             for ((index, workoutJson) in weeklyWorkoutsJson.withIndex()) {
                 val workoutDate = workoutDates.getOrNull(index) ?: routineStartDate.plusDays((dayCounter - 1).toLong())
-                newRoutine.addDailyWorkout(parseAndCreateDailyWorkout(workoutJson, dayCounter++, workoutDate))
+                val parseStartedAt = System.currentTimeMillis()
+
+                log.info(
+                    "Daily workout parse started. routineId={}, week={}, day={}, indexInWeek={}, workoutDate={}, sectionKeys={}",
+                    routine.id,
+                    week,
+                    dayCounter,
+                    index,
+                    workoutDate,
+                    workoutJson.keys
+                )
+
+                val dailyWorkout = parseAndCreateDailyWorkout(workoutJson, dayCounter, workoutDate)
+                val sectionCount = dailyWorkout.sections.size
+                val exerciseCount = dailyWorkout.sections.sumOf { it.exercises.size }
+
+                log.info(
+                    "Daily workout parsed. routineId={}, week={}, day={}, workoutDate={}, sectionCount={}, exerciseCount={}, elapsedMs={}",
+                    routine.id,
+                    week,
+                    dayCounter,
+                    workoutDate,
+                    sectionCount,
+                    exerciseCount,
+                    System.currentTimeMillis() - parseStartedAt
+                )
+
+                routine.addDailyWorkout(dailyWorkout)
+                val savedRoutine = routineRepository.saveAndFlush(routine)
+                log.info(
+                    "Daily workout saved. routineId={}, provider={}, providerId={}, week={}, day={}, workoutDate={}, savedDailyWorkoutCount={}, savedSectionCount={}, savedExerciseCount={}",
+                    savedRoutine.id,
+                    provider,
+                    providerId,
+                    week,
+                    dayCounter,
+                    workoutDate,
+                    savedRoutine.dailyWorkouts.size,
+                    savedRoutine.dailyWorkouts.sumOf { it.sections.size },
+                    savedRoutine.dailyWorkouts.sumOf { daily -> daily.sections.sumOf { it.exercises.size } }
+                )
+
+                dayCounter += 1
             }
         }
 
-        val savedRoutine = routineRepository.save(newRoutine)
+        val savedRoutine = routineRepository.saveAndFlush(routine)
         log.info(
-            "Routine saved. routineId={}, provider={}, providerId={}, dailyWorkoutCount={}, elapsedMs={}",
+            "Routine generation completed. routineId={}, provider={}, providerId={}, dailyWorkoutCount={}, sectionCount={}, exerciseCount={}, elapsedMs={}",
             savedRoutine.id,
             provider,
             providerId,
             savedRoutine.dailyWorkouts.size,
+            savedRoutine.dailyWorkouts.sumOf { it.sections.size },
+            savedRoutine.dailyWorkouts.sumOf { daily -> daily.sections.sumOf { it.exercises.size } },
             System.currentTimeMillis() - startedAt
         )
 
         fcmService.sendNotification(
             "루틴 생성 완료!",
             "${request.schedule.totalWeeks}주 동안의 맞춤형 운동 루틴이 준비되었습니다."
+        )
+        log.info(
+            "Routine generation notification sent. routineId={}, provider={}, providerId={}",
+            savedRoutine.id,
+            provider,
+            providerId
         )
     }
 
@@ -78,7 +192,13 @@ class RoutineGenerationService(
 
         workoutJson.forEach { (sectionName, exercisesRaw) ->
             if (exercisesRaw !is List<*>) {
-                log.warn("Skipping unexpected workout section payload. day={}, sectionName={}", day, sectionName)
+                log.warn(
+                    "Skipping unexpected workout section payload. day={}, workoutDate={}, sectionName={}, payloadType={}",
+                    day,
+                    workoutDate,
+                    sectionName,
+                    exercisesRaw.javaClass.name
+                )
                 return@forEach
             }
 
@@ -89,10 +209,39 @@ class RoutineGenerationService(
             )
 
             exercisesList
-                .map(::createExerciseDetail)
+                .mapIndexed { index, exerciseMap ->
+                    val exercise = createExerciseDetail(exerciseMap)
+                    log.debug(
+                        "Exercise parsed. day={}, workoutDate={}, sectionName={}, exerciseIndex={}, exerciseName={}, repsTime={}, sourceKeys={}",
+                        day,
+                        workoutDate,
+                        sectionName,
+                        index,
+                        exercise.exerciseName,
+                        exercise.repsTime,
+                        exerciseMap.keys
+                    )
+                    exercise
+                }
                 .forEach(workoutSection::addExercise)
 
             dailyWorkout.addSection(workoutSection)
+            log.info(
+                "Workout section parsed. day={}, workoutDate={}, sectionName={}, exerciseCount={}",
+                day,
+                workoutDate,
+                sectionName,
+                workoutSection.exercises.size
+            )
+        }
+
+        if (dailyWorkout.sections.isEmpty()) {
+            log.warn(
+                "Daily workout parsed with no sections. day={}, workoutDate={}, sourceKeys={}",
+                day,
+                workoutDate,
+                workoutJson.keys
+            )
         }
 
         return dailyWorkout

@@ -29,18 +29,42 @@ class RoutineService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun createRoutine(request: RoutineCreateRequest, provider: String, providerId: String) {
-        log.info("Validating routine owner. provider={}, providerId={}", provider, providerId)
+        log.info(
+            "Routine creation request validation started. provider={}, providerId={}, totalWeeks={}, activeDays={}, hoursPerDay={}, goalType={}, targetWeight={}, targetBodyParts={}, fitnessLevel={}, preferredExerciseTypes={}, locations={}, equipments={}",
+            provider,
+            providerId,
+            request.schedule.totalWeeks,
+            request.schedule.activeDays,
+            request.schedule.hoursPerDay,
+            request.goal.goalType,
+            request.goal.targetWeight,
+            request.goal.targetBodyParts,
+            request.fitnessLevel,
+            request.preferredExerciseTypes,
+            request.environment.locations,
+            request.environment.equipments
+        )
+
         userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $provider/$providerId")
+        log.info("Routine creation owner validated. provider={}, providerId={}", provider, providerId)
 
         if (!userProfileHistoryRepository.existsByUserProviderAndUserProviderId(provider, providerId)) {
             throw IllegalArgumentException("신체 정보가 없습니다. 키, 몸무게, 성별을 먼저 등록해야 루틴을 생성할 수 있습니다.")
         }
+        log.info("Routine creation profile history validated. provider={}, providerId={}", provider, providerId)
 
         val messagePayload = RoutineCreationMessage(provider = provider, providerId = providerId, request = request)
         val message = objectMapper.writeValueAsString(messagePayload)
         rabbitTemplate.convertAndSend("routine.exchange", "routine.create.key", message)
-        log.info("Routine creation message published. provider={}, providerId={}", provider, providerId)
+        log.info(
+            "Routine creation message published. provider={}, providerId={}, exchange={}, routingKey={}, payloadBytes={}",
+            provider,
+            providerId,
+            "routine.exchange",
+            "routine.create.key",
+            message.toByteArray().size
+        )
     }
 
     @Transactional(readOnly = true)
