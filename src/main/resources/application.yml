@@ -73,5 +73,5 @@ external:
 
 app:
   oauth:
-    success-redirect-uri: ${APP_OAUTH_SUCCESS_REDIRECT_URI:kdh://oauth/success}
-    failure-redirect-uri: ${APP_OAUTH_FAILURE_REDIRECT_URI:kdh://oauth/failure}
+    success-redirect-uri: ${APP_OAUTH_SUCCESS_REDIRECT_URI:/oauth2/success}
+    failure-redirect-uri: ${APP_OAUTH_FAILURE_REDIRECT_URI:/oauth2/failure}

@@ -7,6 +7,7 @@ import org.springframework.security.core.AuthenticationException
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler
 import org.springframework.stereotype.Component
 import org.springframework.web.util.UriComponentsBuilder
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 
 /**
  * OAuth2 인증 실패 처리 핸들러
@@ -29,11 +30,22 @@ class OAuth2AuthenticationFailureHandler(
         response: HttpServletResponse,
         exception: AuthenticationException
     ) {
-        val targetUrl = UriComponentsBuilder.fromUriString(failureRedirectUri)
+        val targetUrl = redirectUriBuilder(request, failureRedirectUri)
             .queryParam("error", exception.localizedMessage)
             .build()
             .toUriString()
 
         redirectStrategy.sendRedirect(request, response, targetUrl)
+    }
+
+    private fun redirectUriBuilder(request: HttpServletRequest, redirectUri: String): UriComponentsBuilder {
+        if (redirectUri.contains("://")) {
+            return UriComponentsBuilder.fromUriString(redirectUri)
+        }
+
+        val path = if (redirectUri.startsWith("/")) redirectUri else "/$redirectUri"
+        return ServletUriComponentsBuilder.fromRequestUri(request)
+            .replacePath(path)
+            .replaceQuery(null)
     }
 }
