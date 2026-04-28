@@ -9,6 +9,7 @@ import org.springframework.security.core.Authentication
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler
 import org.springframework.stereotype.Component
 import org.springframework.web.util.UriComponentsBuilder
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 import java.util.concurrent.TimeUnit
 
 /**
@@ -51,7 +52,7 @@ class OAuth2AuthenticationSuccessHandler(
             TimeUnit.MILLISECONDS
         )
 
-        val targetUrl = UriComponentsBuilder.fromUriString(successRedirectUri)
+        val targetUrl = redirectUriBuilder(request, successRedirectUri)
             .queryParam("accessToken", accessToken)
             .queryParam("refreshToken", refreshToken)
             .build()
@@ -59,5 +60,16 @@ class OAuth2AuthenticationSuccessHandler(
 
         clearAuthenticationAttributes(request)
         redirectStrategy.sendRedirect(request, response, targetUrl)
+    }
+
+    private fun redirectUriBuilder(request: HttpServletRequest, redirectUri: String): UriComponentsBuilder {
+        if (redirectUri.contains("://")) {
+            return UriComponentsBuilder.fromUriString(redirectUri)
+        }
+
+        val path = if (redirectUri.startsWith("/")) redirectUri else "/$redirectUri"
+        return ServletUriComponentsBuilder.fromRequestUri(request)
+            .replacePath(path)
+            .replaceQuery(null)
     }
 }
