@@ -15,6 +15,13 @@ class GlobalExceptionHandler {
         val message = ex.errorCode.message
         return ResponseEntity.status(ex.errorCode.status).body(ErrorMessageResponse(message))
     }
+
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgumentException(ex: IllegalArgumentException): ResponseEntity<ErrorMessageResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorMessageResponse(ex.message ?: "bad request"))
+    }
+
     @ExceptionHandler(Exception::class)
     fun handleException(ex: Exception): ResponseEntity<ErrorMessageResponse> {
         val logger = LoggerFactory.getLogger(Exception::class.java)
