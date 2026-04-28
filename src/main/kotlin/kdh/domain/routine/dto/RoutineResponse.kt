@@ -80,22 +80,18 @@ data class WorkoutSectionResponse(
 data class ExerciseDetailResponse(
     val id: Long,
     val exerciseName: String,
-    val sets: String?,
-    val reps: String?,
-    val rest: String?,
-    val description: String?,
-    val isAlternative: Boolean
+    val repsTime: String?,
+    val isAlternative: Boolean,
+    val completed: Boolean
 ) {
     companion object {
         fun from(exercise: ExerciseDetail): ExerciseDetailResponse {
             return ExerciseDetailResponse(
                 id = exercise.id,
                 exerciseName = exercise.exerciseName,
-                sets = exercise.sets,
-                reps = exercise.reps,
-                rest = exercise.rest,
-                description = exercise.description,
-                isAlternative = exercise.isAlternative
+                repsTime = exercise.repsTime,
+                isAlternative = exercise.isAlternative,
+                completed = exercise.completed
             )
         }
     }

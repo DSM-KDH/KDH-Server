@@ -153,13 +153,22 @@ class RoutineGenerationService(
         return dailyWorkout
     }
 
-    private fun createExerciseDetail(exerciseMap: Map<String, Any>, isAlternative: Boolean): ExerciseDetail {
+    private fun createExerciseDetail(rawExerciseMap: Map<String, Any>, isAlternative: Boolean): ExerciseDetail {
+        val exerciseMap = if ("exercise" !in rawExerciseMap && rawExerciseMap["exercise_name"] != null) {
+            rawExerciseMap + ("exercise" to rawExerciseMap["exercise_name"]!!)
+        } else {
+            rawExerciseMap
+        }
+
         return ExerciseDetail(
             exerciseName = exerciseMap["exercise"] as? String ?: "이름 없음",
-            sets = exerciseMap["sets"]?.toString(),
-            reps = exerciseMap["reps"]?.toString(),
-            rest = exerciseMap["rest"]?.toString(),
-            description = exerciseMap["description"] as? String,
+            repsTime = (exerciseMap["reps_time"]
+                ?: exerciseMap["repsTime"]
+                ?: listOfNotNull(
+                    exerciseMap["sets"]?.toString(),
+                    exerciseMap["reps"]?.toString(),
+                    exerciseMap["rest"]?.toString()
+                ).takeIf { it.isNotEmpty() }?.joinToString(" / "))?.toString(),
             isAlternative = isAlternative
         )
     }
@@ -170,10 +179,6 @@ class RoutineGenerationService(
                 when (alternative) {
                     is String -> ExerciseDetail(
                         exerciseName = alternative,
-                        sets = null,
-                        reps = null,
-                        rest = null,
-                        description = null,
                         isAlternative = true
                     )
                     is Map<*, *> -> {
