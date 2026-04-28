@@ -59,6 +59,17 @@ class RoutineService(
         return RoutineDateResponse(date = date, workouts = workouts)
     }
 
+    @Transactional(readOnly = true)
+    fun getMyRoutineDates(provider: String, providerId: String): List<LocalDate> {
+        val today = LocalDate.now()
+        return dailyWorkoutRepository.findDistinctWorkoutDatesInRange(
+            provider = provider,
+            providerId = providerId,
+            fromDate = today.minusMonths(1),
+            toDate = today
+        )
+    }
+
     @Transactional
     fun updateExerciseCompletion(
         exerciseId: Long,
