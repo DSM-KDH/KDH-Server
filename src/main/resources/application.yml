@@ -73,5 +73,5 @@ external:
 
 app:
   oauth:
-    success-redirect-uri: ${APP_OAUTH_SUCCESS_REDIRECT_URI:/oauth2/success}
+    success-redirect-uri: ${APP_OAUTH_SUCCESS_REDIRECT_URI:kdhmobile://oauth2/callback}
     failure-redirect-uri: ${APP_OAUTH_FAILURE_REDIRECT_URI:/oauth2/failure}

@@ -92,13 +92,12 @@ class RoutineService(
 
     @Transactional(readOnly = true)
     fun getMyRoutineByDate(date: LocalDate, provider: String, providerId: String): RoutineDateResponse {
-        val canComplete = date == LocalDate.now()
         val workouts = dailyWorkoutRepository
             .findByRoutineUserProviderAndRoutineUserProviderIdAndWorkoutDate(provider, providerId, date)
             .flatMap { dailyWorkout ->
                 dailyWorkout.sections.flatMap { section ->
                     section.exercises.map { exercise ->
-                        RoutineWorkoutItemResponse.from(section, exercise, canComplete)
+                        RoutineWorkoutItemResponse.from(section, exercise)
                     }
                 }
             }

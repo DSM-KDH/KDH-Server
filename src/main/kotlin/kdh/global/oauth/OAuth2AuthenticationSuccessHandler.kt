@@ -55,7 +55,9 @@ class OAuth2AuthenticationSuccessHandler(
         val targetUrl = redirectUriBuilder(request, successRedirectUri)
             .queryParam("accessToken", accessToken)
             .queryParam("refreshToken", refreshToken)
+            .queryParam("email", customOAuth2User.attributes?.get("email")?.toString().orEmpty())
             .build()
+            .encode()
             .toUriString()
 
         clearAuthenticationAttributes(request)

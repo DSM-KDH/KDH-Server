@@ -7,7 +7,7 @@ import java.time.LocalDate
 
 @Schema(description = "날짜별 루틴 상세 조회 응답")
 data class RoutineDateResponse(
-    @field:Schema(description = "조회한 날짜", example = "2026-04-28")
+    @field:Schema(description = "조회한 날짜", example = "2026-04-29")
     val date: LocalDate,
 
     @field:Schema(description = "해당 날짜의 운동 목록입니다. 운동이 없으면 빈 배열입니다.")
@@ -29,20 +29,16 @@ data class RoutineWorkoutItemResponse(
     val repsTime: String?,
 
     @field:Schema(description = "운동 완료 여부", example = "false")
-    val completed: Boolean,
-
-    @field:Schema(description = "완료 체크 가능 여부. 서버 날짜 기준 당일 운동만 true입니다.", example = "true")
-    val canComplete: Boolean
+    val completed: Boolean
 ) {
     companion object {
-        fun from(section: WorkoutSection, exercise: ExerciseDetail, canComplete: Boolean): RoutineWorkoutItemResponse {
+        fun from(section: WorkoutSection, exercise: ExerciseDetail): RoutineWorkoutItemResponse {
             return RoutineWorkoutItemResponse(
                 exerciseId = exercise.id,
                 sectionName = section.normalizedName(),
                 exerciseName = exercise.exerciseName,
                 repsTime = exercise.repsTime,
-                completed = exercise.completed,
-                canComplete = canComplete
+                completed = exercise.completed
             )
         }
     }
@@ -53,7 +49,7 @@ data class ExerciseCompletionResponse(
     @field:Schema(description = "완료 상태가 변경된 운동 ID", example = "1")
     val exerciseId: Long,
 
-    @field:Schema(description = "변경 후 완료 여부", example = "true")
+    @field:Schema(description = "변경된 완료 여부", example = "true")
     val completed: Boolean
 )
 
