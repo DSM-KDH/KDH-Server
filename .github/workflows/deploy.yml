@@ -91,4 +91,4 @@ jobs:
             exit 1
 
             # 7. 사용하지 않는 이미지 정리 (Health check 성공 시 실행되도록 위치 조정 가능)
-            docker image prune -f
+            docker system prune -a --volumes
