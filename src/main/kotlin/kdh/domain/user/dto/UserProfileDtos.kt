@@ -26,6 +26,7 @@ data class UserProfileUpdateRequest(
 @Schema(description = "사용자 신체 정보 응답")
 data class UserProfileResponse(
     val id: Long,
+    val name: String,
     val heightCm: Double,
     val weightKg: Double,
     val gender: Gender,
@@ -36,6 +37,7 @@ data class UserProfileResponse(
         fun from(profile: UserProfileHistory): UserProfileResponse {
             return UserProfileResponse(
                 id = profile.id,
+                name = profile.user.name,
                 heightCm = profile.heightCm,
                 weightKg = profile.weightKg,
                 gender = profile.gender,
