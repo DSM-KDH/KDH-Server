@@ -27,6 +27,7 @@ data class UserProfileUpdateRequest(
 data class UserProfileResponse(
     val id: Long,
     val name: String,
+    val profileImage: String?,
     val heightCm: Double,
     val weightKg: Double,
     val gender: Gender,
@@ -38,6 +39,7 @@ data class UserProfileResponse(
             return UserProfileResponse(
                 id = profile.id,
                 name = profile.user.name,
+                profileImage = profile.user.profileImage,
                 heightCm = profile.heightCm,
                 weightKg = profile.weightKg,
                 gender = profile.gender,

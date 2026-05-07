@@ -54,10 +54,12 @@ class CustomOAuth2UserService(
             ?: User(
                 provider = provider,
                 providerId = providerId,
-                name = userInfo.getName()
+                name = userInfo.getName(),
+                profileImage = userInfo.getProfileImage()
             )
 
         user.name = userInfo.getName()
+        user.profileImage = userInfo.getProfileImage()
 
         return userRepository.save(user)
     }

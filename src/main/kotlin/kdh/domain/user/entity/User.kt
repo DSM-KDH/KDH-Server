@@ -16,4 +16,7 @@ class User(
 
     @Column(nullable = false)
     var name: String,
+
+    @Column(name = "profile_image")
+    var profileImage: String? = null,
 )
