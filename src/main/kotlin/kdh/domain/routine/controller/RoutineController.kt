@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import kdh.domain.routine.dto.ExerciseCompletionResponse
 import kdh.domain.routine.dto.RoutineCreateRequest
+import kdh.domain.routine.dto.RoutineAchievementRateResponse
 import kdh.domain.routine.dto.RoutineDateResponse
 import kdh.domain.routine.service.RoutineService
 import kdh.global.oauth.CustomOAuth2User
@@ -158,6 +159,24 @@ class RoutineController(
         @AuthenticationPrincipal principal: CustomOAuth2User
     ): ResponseEntity<List<LocalDate>> {
         return ResponseEntity.ok(routineService.getMyRoutineDates(principal.provider, principal.providerId))
+    }
+
+    @GetMapping("/achievement-rate/last-week")
+    @Operation(
+        summary = "Last week's routine achievement rate",
+        description = "Returns the authenticated user's routine achievement rate for last Monday through Sunday.",
+        security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    fun getLastWeekAchievementRate(
+        @Parameter(hidden = true)
+        @AuthenticationPrincipal principal: CustomOAuth2User
+    ): ResponseEntity<RoutineAchievementRateResponse> {
+        return ResponseEntity.ok(
+            routineService.getLastWeekAchievementRate(
+                principal.provider,
+                principal.providerId
+            )
+        )
     }
 
     @PatchMapping("/exercises/{exerciseId}/completion")

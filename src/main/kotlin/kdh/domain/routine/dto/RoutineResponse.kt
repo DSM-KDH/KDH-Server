@@ -53,6 +53,24 @@ data class ExerciseCompletionResponse(
     val completed: Boolean
 )
 
+@Schema(description = "Last week's routine achievement rate response")
+data class RoutineAchievementRateResponse(
+    @field:Schema(description = "Start date of last week", example = "2026-04-27")
+    val startDate: LocalDate,
+
+    @field:Schema(description = "End date of last week", example = "2026-05-03")
+    val endDate: LocalDate,
+
+    @field:Schema(description = "Total exercise count in the period", example = "20")
+    val totalExerciseCount: Long,
+
+    @field:Schema(description = "Completed exercise count in the period", example = "15")
+    val completedExerciseCount: Long,
+
+    @field:Schema(description = "Achievement rate as a percentage", example = "75.0")
+    val achievementRate: Double
+)
+
 private fun WorkoutSection.normalizedName(): String {
     val cleanName = name.trim().replace(Regex("^\\d+\\s*[.)-]\\s*"), "")
     return when {

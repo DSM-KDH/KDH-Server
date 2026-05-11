@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kdh.domain.routine.dto.ExerciseCompletionResponse
 import kdh.domain.routine.dto.RoutineCreateRequest
 import kdh.domain.routine.dto.RoutineCreationMessage
+import kdh.domain.routine.dto.RoutineAchievementRateResponse
 import kdh.domain.routine.dto.RoutineDateResponse
 import kdh.domain.routine.dto.RoutineWorkoutItemResponse
 import kdh.domain.routine.repository.DailyWorkoutRepository
@@ -15,7 +16,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.amqp.rabbit.core.RabbitTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 
 @Service
 class RoutineService(
@@ -123,6 +126,49 @@ class RoutineService(
             dates
         )
         return dates
+    }
+
+    @Transactional(readOnly = true)
+    fun getLastWeekAchievementRate(provider: String, providerId: String): RoutineAchievementRateResponse {
+        val thisWeekMonday = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val startDate = thisWeekMonday.minusWeeks(1)
+        val endDate = startDate.plusDays(6)
+        val totalExerciseCount = dailyWorkoutRepository.countExercisesBetweenDates(
+            provider = provider,
+            providerId = providerId,
+            startDate = startDate,
+            endDate = endDate
+        )
+        val completedExerciseCount = dailyWorkoutRepository.countCompletedExercisesBetweenDates(
+            provider = provider,
+            providerId = providerId,
+            startDate = startDate,
+            endDate = endDate
+        )
+        val achievementRate = if (totalExerciseCount == 0L) {
+            0.0
+        } else {
+            completedExerciseCount.toDouble() / totalExerciseCount.toDouble() * 100
+        }
+
+        log.info(
+            "Last week routine achievement rate queried. provider={}, providerId={}, startDate={}, endDate={}, completedExerciseCount={}, totalExerciseCount={}, achievementRate={}",
+            provider,
+            providerId,
+            startDate,
+            endDate,
+            completedExerciseCount,
+            totalExerciseCount,
+            achievementRate
+        )
+
+        return RoutineAchievementRateResponse(
+            startDate = startDate,
+            endDate = endDate,
+            totalExerciseCount = totalExerciseCount,
+            completedExerciseCount = completedExerciseCount,
+            achievementRate = achievementRate
+        )
     }
 
     @Transactional

@@ -45,4 +45,41 @@ interface DailyWorkoutRepository : JpaRepository<DailyWorkout, Long> {
         @Param("providerId") providerId: String,
         @Param("today") today: LocalDate
     ): LocalDate?
+
+    @Query(
+        """
+        select count(e)
+        from ExerciseDetail e
+          join e.section s
+          join s.dailyWorkout d
+        where d.routine.user.provider = :provider
+          and d.routine.user.providerId = :providerId
+          and d.workoutDate between :startDate and :endDate
+        """
+    )
+    fun countExercisesBetweenDates(
+        @Param("provider") provider: String,
+        @Param("providerId") providerId: String,
+        @Param("startDate") startDate: LocalDate,
+        @Param("endDate") endDate: LocalDate
+    ): Long
+
+    @Query(
+        """
+        select count(e)
+        from ExerciseDetail e
+          join e.section s
+          join s.dailyWorkout d
+        where d.routine.user.provider = :provider
+          and d.routine.user.providerId = :providerId
+          and d.workoutDate between :startDate and :endDate
+          and e.completed = true
+        """
+    )
+    fun countCompletedExercisesBetweenDates(
+        @Param("provider") provider: String,
+        @Param("providerId") providerId: String,
+        @Param("startDate") startDate: LocalDate,
+        @Param("endDate") endDate: LocalDate
+    ): Long
 }
