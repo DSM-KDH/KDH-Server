@@ -17,5 +17,7 @@ interface UserProfileHistoryRepository : JpaRepository<UserProfileHistory, Long>
         providerId: String
     ): List<UserProfileHistory>
 
+    fun deleteByUserProviderAndUserProviderId(provider: String, providerId: String)
+
     fun findByNextReminderAtLessThanEqual(nextReminderAt: LocalDateTime): List<UserProfileHistory>
 }

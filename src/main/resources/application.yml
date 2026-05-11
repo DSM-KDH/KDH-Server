@@ -25,9 +25,9 @@ spring:
     show-sql: false
     properties:
       hibernate:
-        format_sql: true
-        use_sql_comments: true
-        highlight_sql: true
+        format_sql: false
+        use_sql_comments: false
+        highlight_sql: false
         default_batch_fetch_size: 100
         jdbc:
           batch_size: 50
@@ -60,11 +60,6 @@ jwt:
 server:
   port: ${PORT}
   forward-headers-strategy: framework
-
-logging:
-  level:
-    org.hibernate.SQL: debug
-    org.hibernate.orm.jdbc.bind: trace
 
 external:
   api:

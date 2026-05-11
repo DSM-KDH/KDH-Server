@@ -14,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager
 import java.time.LocalDate
 
 @DataJpaTest(
+    showSql = false,
     properties = [
         "spring.datasource.url=jdbc:h2:mem:daily-workout-repository-test;NON_KEYWORDS=DAY;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false",
         "spring.datasource.driver-class-name=org.h2.Driver",
