@@ -1,6 +1,6 @@
 ﻿package kdh.domain.auth.controller
 
-import kdh.domain.user.repository.UserRepository
+import kdh.domain.user.service.UserAccountService
 import kdh.global.oauth.CustomOAuth2User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -16,7 +16,6 @@ import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
-import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -28,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "AUTH", description = "OAuth2 콜백 API \n요청은 /oauth2/authorization/google")
 class OAuth2Controller(
     private val redisTemplate: RedisTemplate<String, Any>,
-    private val userRepository: UserRepository,
+    private val userAccountService: UserAccountService,
     @Value("\${DB_NAME}") private val dbName: String
 ) {
 
@@ -144,7 +143,6 @@ class OAuth2Controller(
     }
 
     @PostMapping("/withdrawal")
-    @Transactional
     @Operation(
         summary = "회원 탈퇴",
         description = "회원 탈퇴를 처리하고 사용자 정보와 Refresh Token을 삭제합니다.",
@@ -159,7 +157,7 @@ class OAuth2Controller(
                 .body(mapOf("success" to false, "message" to "유효한 로그인 정보가 없습니다. Authorization 헤더에 Bearer 토큰을 넣어주세요."))
         }
 
-        userRepository.deleteByProviderAndProviderId(user.provider, user.providerId)
+        userAccountService.withdraw(user.provider, user.providerId)
         val key = "$dbName:${user.provider}:${user.providerId}"
         redisTemplate.delete(key)
         return ResponseEntity.ok(mapOf("success" to true, "message" to "회원 탈퇴 되었습니다."))
