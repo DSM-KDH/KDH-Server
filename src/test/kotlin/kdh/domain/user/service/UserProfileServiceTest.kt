@@ -8,6 +8,7 @@ import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
 import kdh.anyValue
 import kdh.captureValue
+import kdh.global.exception.KdhException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -56,8 +57,6 @@ class UserProfileServiceTest {
         assertThat(captor.value.weightKg).isEqualTo(68.0)
         assertThat(captor.value.gender).isEqualTo(Gender.MALE)
         assertThat(response.id).isEqualTo(10L)
-        assertThat(response.name).isEqualTo("Tester")
-        assertThat(response.profileImage).isEqualTo("profile.png")
         assertThat(response.nextReminderAt).isEqualTo(response.recordedAt.plusMonths(1))
     }
 
@@ -71,7 +70,7 @@ class UserProfileServiceTest {
                 "missing",
                 UserProfileUpdateRequest(heightCm = 170.0, weightKg = 65.0, gender = Gender.FEMALE)
             )
-        }.isInstanceOf(IllegalArgumentException::class.java)
+        }.isInstanceOf(KdhException::class.java)
 
         Mockito.verify(profileRepository, Mockito.never()).save(anyValue())
     }
@@ -93,7 +92,7 @@ class UserProfileServiceTest {
         assertThat(response.recordedAt).isEqualTo(recordedAt)
         assertThat(response.nextReminderAt).isEqualTo(recordedAt.plusMonths(1))
         assertThatThrownBy { service.getLatestProfile("kakao", "empty") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(KdhException::class.java)
     }
 
     @Test

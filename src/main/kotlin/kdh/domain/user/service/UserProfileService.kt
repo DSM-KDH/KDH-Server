@@ -5,6 +5,8 @@ import kdh.domain.user.dto.UserProfileUpdateRequest
 import kdh.domain.user.entity.UserProfileHistory
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
+import kdh.domain.user.exception.ProfileNotFoundException
+import kdh.domain.user.exception.UserNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -17,7 +19,7 @@ class UserProfileService(
     @Transactional
     fun updateProfile(provider: String, providerId: String, request: UserProfileUpdateRequest): UserProfileResponse {
         val user = userRepository.findByProviderAndProviderId(provider, providerId)
-            ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $provider/$providerId")
+            ?: throw UserNotFoundException(provider, providerId)
 
         val profile = userProfileHistoryRepository.save(
             UserProfileHistory(
@@ -36,7 +38,7 @@ class UserProfileService(
         val profile = userProfileHistoryRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc(
             provider,
             providerId
-        ) ?: throw IllegalArgumentException("사용자 신체 정보가 없습니다. 먼저 신체 정보를 등록해주세요.")
+        ) ?: throw ProfileNotFoundException()
 
         return UserProfileResponse.from(profile)
     }

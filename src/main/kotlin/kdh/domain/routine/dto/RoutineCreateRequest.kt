@@ -18,9 +18,10 @@ import kdh.domain.routine.enum.LocationType
 data class RoutineCreateRequest(
     @field:Schema(
         description = "루틴 생성이 완료되었을 때 푸시 알림을 받을 FCM 토큰입니다.",
-        example = "sample-fcm-token"
+        example = "sample-fcm-token",
+        nullable = true
     )
-    val fcmToken: String,
+    val fcmToken: String? = null,
 
     @field:Valid
     @field:Schema(description = "운동 목표 정보입니다. 루틴의 방향성과 강도, 집중 부위를 결정하는 데 사용됩니다.")

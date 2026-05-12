@@ -1,5 +1,6 @@
 package kdh.global.oauth
 
+import kdh.global.oauth.exception.InvalidProviderTypeException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -28,6 +29,6 @@ class OAuth2UserInfoFactoryTest {
     @Test
     fun `getOAuth2UserInfo rejects unsupported provider`() {
         assertThatThrownBy { OAuth2UserInfoFactory.getOAuth2UserInfo("kakao", emptyMap()) }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(InvalidProviderTypeException::class.java)
     }
 }

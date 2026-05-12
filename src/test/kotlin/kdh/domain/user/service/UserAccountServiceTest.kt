@@ -4,6 +4,8 @@ import kdh.domain.routine.repository.RoutineRepository
 import kdh.domain.user.entity.User
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
+import kdh.global.exception.KdhException
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -25,6 +27,25 @@ class UserAccountServiceTest {
     }
 
     @Test
+    fun `getAccountProfile returns user name and profile image`() {
+        val user = User(provider = "kakao", providerId = "user-1", name = "Tester", profileImage = "profile.png")
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user)
+
+        val response = service.getAccountProfile("kakao", "user-1")
+
+        assertThat(response.name).isEqualTo("Tester")
+        assertThat(response.profileImage).isEqualTo("profile.png")
+    }
+
+    @Test
+    fun `getAccountProfile throws when user does not exist`() {
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "missing")).thenReturn(null)
+
+        assertThatThrownBy { service.getAccountProfile("kakao", "missing") }
+            .isInstanceOf(KdhException::class.java)
+    }
+
+    @Test
     fun `withdraw deletes user owned data and account`() {
         val user = User(provider = "kakao", providerId = "user-1", name = "Tester")
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user)
@@ -42,7 +63,7 @@ class UserAccountServiceTest {
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "missing")).thenReturn(null)
 
         assertThatThrownBy { service.withdraw("kakao", "missing") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(KdhException::class.java)
 
         Mockito.verify(routineRepository, Mockito.never()).deleteByUserProviderAndUserProviderId(Mockito.anyString(), Mockito.anyString())
         Mockito.verify(profileRepository, Mockito.never()).deleteByUserProviderAndUserProviderId(Mockito.anyString(), Mockito.anyString())

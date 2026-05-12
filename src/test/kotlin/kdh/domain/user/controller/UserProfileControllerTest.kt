@@ -57,8 +57,6 @@ class UserProfileControllerTest {
         val recordedAt = LocalDateTime.of(2026, 5, 11, 10, 0)
         return UserProfileResponse(
             id = id,
-            name = "Tester",
-            profileImage = "profile.png",
             heightCm = 170.0,
             weightKg = 65.0,
             gender = Gender.FEMALE,

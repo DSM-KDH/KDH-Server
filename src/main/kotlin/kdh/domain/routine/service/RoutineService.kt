@@ -12,6 +12,12 @@ import kdh.domain.routine.repository.DailyWorkoutRepository
 import kdh.domain.routine.repository.ExerciseDetailRepository
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
+import kdh.domain.routine.exception.ExerciseCompletionDateInvalidException
+import kdh.domain.routine.exception.ExerciseNotFoundException
+import kdh.domain.routine.exception.ExerciseWorkoutDateNotFoundException
+import kdh.domain.routine.exception.FutureRoutineExistsException
+import kdh.domain.routine.exception.ProfileRequiredException
+import kdh.domain.user.exception.UserNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.amqp.rabbit.core.RabbitTemplate
 import org.springframework.stereotype.Service
@@ -49,11 +55,11 @@ class RoutineService(
         )
 
         userRepository.findByProviderAndProviderId(provider, providerId)
-            ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $provider/$providerId")
+            ?: throw UserNotFoundException(provider, providerId)
         log.info("Routine creation owner validated. provider={}, providerId={}", provider, providerId)
 
         if (!userProfileHistoryRepository.existsByUserProviderAndUserProviderId(provider, providerId)) {
-            throw IllegalArgumentException("신체 정보가 없습니다. 키, 몸무게, 성별을 먼저 등록해야 루틴을 생성할 수 있습니다.")
+            throw ProfileRequiredException()
         }
         log.info("Routine creation profile history validated. provider={}, providerId={}", provider, providerId)
 
@@ -71,7 +77,7 @@ class RoutineService(
                 today,
                 firstFutureWorkoutDate
             )
-            throw IllegalArgumentException("현재일 이후에 예정된 루틴이 있어 새 루틴을 생성할 수 없습니다. 가장 가까운 예정일: $firstFutureWorkoutDate")
+            throw FutureRoutineExistsException(firstFutureWorkoutDate)
         }
         log.info(
             "Routine creation future routine validation passed. provider={}, providerId={}, today={}",
@@ -184,13 +190,13 @@ class RoutineService(
                 provider,
                 providerId
             )
-            ?: throw IllegalArgumentException("운동을 찾을 수 없습니다: $exerciseId")
+            ?: throw ExerciseNotFoundException(exerciseId)
 
         val workoutDate = exercise.section?.dailyWorkout?.workoutDate
-            ?: throw IllegalArgumentException("운동 날짜를 찾을 수 없습니다: $exerciseId")
+            ?: throw ExerciseWorkoutDateNotFoundException(exerciseId)
 
         if (workoutDate != LocalDate.now()) {
-            throw IllegalArgumentException("당일 운동만 완료 처리할 수 있습니다.")
+            throw ExerciseCompletionDateInvalidException()
         }
 
         exercise.completed = completed

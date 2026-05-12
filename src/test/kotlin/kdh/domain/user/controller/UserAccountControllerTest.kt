@@ -1,5 +1,6 @@
 package kdh.domain.user.controller
 
+import kdh.domain.user.dto.UserAccountProfileResponse
 import kdh.domain.user.service.UserAccountService
 import kdh.global.oauth.CustomOAuth2User
 import org.assertj.core.api.Assertions.assertThat
@@ -17,6 +18,16 @@ class UserAccountControllerTest {
     fun setUp() {
         userAccountService = Mockito.mock(UserAccountService::class.java)
         controller = UserAccountController(userAccountService)
+    }
+
+    @Test
+    fun `getAccountProfile returns authenticated account profile`() {
+        val expected = UserAccountProfileResponse(name = "Tester", profileImage = "profile.png")
+        Mockito.`when`(userAccountService.getAccountProfile("kakao", "user-1")).thenReturn(expected)
+
+        val response = controller.getAccountProfile(principal())
+
+        assertThat(response.body).isSameAs(expected)
     }
 
     @Test

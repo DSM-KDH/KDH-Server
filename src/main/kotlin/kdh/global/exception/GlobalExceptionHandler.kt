@@ -15,7 +15,7 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(KdhException::class)
     fun handleKdhException(ex: KdhException): ResponseEntity<ErrorMessageResponse> {
-        val message = ex.errorCode.message
+        val message = ex.message
         return ResponseEntity.status(ex.errorCode.status).body(ErrorMessageResponse(message))
     }
 

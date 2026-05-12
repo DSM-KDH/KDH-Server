@@ -17,6 +17,8 @@ import kdh.domain.routine.enum.ExerciseType
 import kdh.domain.routine.enum.FitnessLevel
 import kdh.domain.routine.enum.GoalType
 import kdh.domain.routine.enum.LocationType
+import kdh.domain.routine.exception.WorkoutApiEmptyResponseException
+import kdh.domain.routine.exception.WorkoutApiFailedException
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -199,10 +201,7 @@ class WorkoutApiClient(
             }
         }
 
-        throw IllegalStateException(
-            "Workout API 호출을 ${MAX_WORKOUT_API_RETRY_COUNT}회 모두 실패했습니다.",
-            lastError
-        )
+        throw WorkoutApiFailedException(MAX_WORKOUT_API_RETRY_COUNT, lastError)
     }
 
     private fun postToWorkoutApi(state: ExternalWorkoutApiRequest): String {
@@ -211,7 +210,7 @@ class WorkoutApiClient(
             .bodyValue(state)
             .retrieve()
             .bodyToMono(String::class.java)
-            .block() ?: throw IllegalStateException("Workout API 응답이 없습니다.")
+            .block() ?: throw WorkoutApiEmptyResponseException()
     }
 
     private fun createInitialState(request: RoutineCreateRequest, phase: Int, threadId: String): ExternalWorkoutApiRequest {

@@ -17,9 +17,15 @@ import kdh.domain.routine.enum.ExerciseType
 import kdh.domain.routine.enum.FitnessLevel
 import kdh.domain.routine.enum.GoalType
 import kdh.domain.routine.enum.LocationType
+import kdh.domain.routine.exception.ExerciseCompletionDateInvalidException
+import kdh.domain.routine.exception.ExerciseNotFoundException
+import kdh.domain.routine.exception.ExerciseWorkoutDateNotFoundException
+import kdh.domain.routine.exception.FutureRoutineExistsException
+import kdh.domain.routine.exception.ProfileRequiredException
 import kdh.domain.routine.repository.DailyWorkoutRepository
 import kdh.domain.routine.repository.ExerciseDetailRepository
 import kdh.domain.user.entity.User
+import kdh.domain.user.exception.UserNotFoundException
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
 import kdh.captureValue
@@ -85,18 +91,18 @@ class RoutineServiceTest {
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "missing")).thenReturn(null)
 
         assertThatThrownBy { service.createRoutine(request, "kakao", "missing") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(UserNotFoundException::class.java)
 
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
         Mockito.`when`(profileRepository.existsByUserProviderAndUserProviderId("kakao", "user-1")).thenReturn(false)
         assertThatThrownBy { service.createRoutine(request, "kakao", "user-1") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(ProfileRequiredException::class.java)
 
         Mockito.`when`(profileRepository.existsByUserProviderAndUserProviderId("kakao", "user-1")).thenReturn(true)
         Mockito.`when`(dailyWorkoutRepository.findFirstFutureWorkoutDate("kakao", "user-1", LocalDate.now()))
             .thenReturn(LocalDate.now().plusDays(1))
         assertThatThrownBy { service.createRoutine(request, "kakao", "user-1") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(FutureRoutineExistsException::class.java)
 
         Mockito.verifyNoInteractions(rabbitTemplate)
     }
@@ -189,7 +195,7 @@ class RoutineServiceTest {
             )
         ).thenReturn(null)
         assertThatThrownBy { service.updateExerciseCompletion(99L, true, "kakao", "user-1") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(ExerciseNotFoundException::class.java)
 
         Mockito.`when`(
             exerciseRepository.findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
@@ -199,7 +205,7 @@ class RoutineServiceTest {
             )
         ).thenReturn(ownedExercise(workoutDate = null))
         assertThatThrownBy { service.updateExerciseCompletion(2L, true, "kakao", "user-1") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(ExerciseWorkoutDateNotFoundException::class.java)
 
         Mockito.`when`(
             exerciseRepository.findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
@@ -209,7 +215,7 @@ class RoutineServiceTest {
             )
         ).thenReturn(ownedExercise(workoutDate = LocalDate.now().minusDays(1)))
         assertThatThrownBy { service.updateExerciseCompletion(3L, true, "kakao", "user-1") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(ExerciseCompletionDateInvalidException::class.java)
     }
 
     private fun ownedExercise(workoutDate: LocalDate?, completed: Boolean = false): ExerciseDetail {

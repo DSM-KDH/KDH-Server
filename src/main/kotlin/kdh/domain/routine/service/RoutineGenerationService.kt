@@ -11,6 +11,7 @@ import kdh.domain.routine.entity.Routine
 import kdh.domain.routine.entity.WorkoutSection
 import kdh.domain.routine.repository.RoutineRepository
 import kdh.domain.user.repository.UserRepository
+import kdh.domain.user.exception.UserNotFoundException
 import kdh.infra.fcm.FcmService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -48,7 +49,7 @@ class RoutineGenerationService(
         )
 
         val user = userRepository.findByProviderAndProviderId(provider, providerId)
-            ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $provider/$providerId")
+            ?: throw UserNotFoundException(provider, providerId)
 
         log.info(
             "Routine generation owner found. provider={}, providerId={}, userName={}",

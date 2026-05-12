@@ -14,6 +14,7 @@ import kdh.domain.routine.enum.GoalType
 import kdh.domain.routine.enum.LocationType
 import kdh.domain.routine.repository.RoutineRepository
 import kdh.domain.user.entity.User
+import kdh.domain.user.exception.UserNotFoundException
 import kdh.domain.user.repository.UserRepository
 import kdh.infra.fcm.FcmService
 import kdh.anyValue
@@ -86,7 +87,7 @@ class RoutineGenerationServiceTest {
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "missing")).thenReturn(null)
 
         assertThatThrownBy { service.generateMultiWeekRoutine(request, "kakao", "missing") }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(UserNotFoundException::class.java)
 
         Mockito.verifyNoInteractions(workoutApiClient, routineRepository, fcmService)
     }

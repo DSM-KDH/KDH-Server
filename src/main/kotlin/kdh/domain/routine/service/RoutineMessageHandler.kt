@@ -3,6 +3,8 @@ package kdh.domain.routine.service
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kdh.domain.routine.dto.RoutineCreationMessage
+import kdh.domain.routine.exception.RoutineGenerationFailedException
+import kdh.global.exception.KdhException
 import org.springframework.amqp.rabbit.annotation.RabbitListener
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -52,7 +54,7 @@ class RoutineMessageHandler(
                 System.currentTimeMillis() - startedAt,
                 e
             )
-            throw e
+            throw (e as? KdhException ?: RoutineGenerationFailedException(e))
         }
     }
 }
