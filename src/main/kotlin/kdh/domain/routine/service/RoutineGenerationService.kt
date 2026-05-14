@@ -84,26 +84,44 @@ class RoutineGenerationService(
             workoutDatesByGenerationOrder
         )
 
+        val userId = "$provider:$providerId"
+        val apiStartedAt = System.currentTimeMillis()
+        val baseWeeklyWorkoutsJson = workoutApiClient.generateSingleWeekRoutine(request, userId)
+        log.info(
+            "Routine base week generation API completed. userId={}, generatedDays={}, expectedDays={}, elapsedMs={}",
+            userId,
+            baseWeeklyWorkoutsJson.size,
+            request.schedule.activeDays.size,
+            System.currentTimeMillis() - apiStartedAt
+        )
+
+        if (baseWeeklyWorkoutsJson.size < request.schedule.activeDays.size) {
+            log.warn(
+                "Routine base week generation returned fewer workouts than expected. generatedDays={}, expectedDays={}",
+                baseWeeklyWorkoutsJson.size,
+                request.schedule.activeDays.size
+            )
+        }
+
         for (week in 1..request.schedule.totalWeeks) {
             val weekStartedAt = System.currentTimeMillis()
-            val phase = determinePhaseForWeek(week)
             val workoutDates = workoutDatesByGenerationOrder
                 .drop((week - 1) * request.schedule.activeDays.size)
                 .take(request.schedule.activeDays.size)
+            val weeklyWorkoutsJson = applyWeeklyProgression(baseWeeklyWorkoutsJson, week)
 
             log.info(
-                "Routine week generation started. week={}, phase={}, activeDays={}, plannedDates={}",
+                "Routine week expansion started. week={}, userId={}, activeDays={}, plannedDates={}",
                 week,
-                phase,
+                userId,
                 request.schedule.activeDays,
                 workoutDates
             )
 
-            val weeklyWorkoutsJson = workoutApiClient.generateSingleWeekRoutine(request, phase)
             log.info(
-                "Routine week generation API completed. week={}, phase={}, generatedDays={}, expectedDays={}, elapsedMs={}",
+                "Routine week expansion completed. week={}, userId={}, generatedDays={}, expectedDays={}, elapsedMs={}",
                 week,
-                phase,
+                userId,
                 weeklyWorkoutsJson.size,
                 request.schedule.activeDays.size,
                 System.currentTimeMillis() - weekStartedAt
@@ -281,14 +299,6 @@ class RoutineGenerationService(
         return workoutDates
     }
 
-    private fun determinePhaseForWeek(week: Int): Int {
-        return when {
-            week == 1 -> 1
-            week <= 3 -> 2
-            else -> 3
-        }
-    }
-
     private fun kdh.domain.routine.enum.DayOfWeek.toJavaDayOfWeek(): java.time.DayOfWeek {
         return when (this) {
             kdh.domain.routine.enum.DayOfWeek.MON -> java.time.DayOfWeek.MONDAY
@@ -299,5 +309,50 @@ class RoutineGenerationService(
             kdh.domain.routine.enum.DayOfWeek.SAT -> java.time.DayOfWeek.SATURDAY
             kdh.domain.routine.enum.DayOfWeek.SUN -> java.time.DayOfWeek.SUNDAY
         }
+    }
+
+    private fun applyWeeklyProgression(
+        baseWeeklyWorkouts: List<Map<String, Any>>,
+        week: Int
+    ): List<Map<String, Any>> {
+        if (week <= 1) {
+            return baseWeeklyWorkouts
+        }
+
+        return baseWeeklyWorkouts.map { workoutJson ->
+            workoutJson.mapValues { (_, exercisesRaw) ->
+                if (exercisesRaw !is List<*>) {
+                    exercisesRaw
+                } else {
+                    exercisesRaw.map { exerciseRaw ->
+                        if (exerciseRaw !is Map<*, *>) {
+                            exerciseRaw
+                        } else {
+                            val progressedExercise = LinkedHashMap<String, Any?>()
+                            exerciseRaw.forEach { (key, value) ->
+                                if (key is String) {
+                                    progressedExercise[key] = value
+                                }
+                            }
+                            val baseRepsTime = progressedExercise["reps_time"]
+                                ?: progressedExercise["repsTime"]
+                                ?: progressedExercise["reps"]
+                            progressedExercise["reps_time"] = progressRepsTime(baseRepsTime?.toString(), week)
+                            progressedExercise
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun progressRepsTime(baseRepsTime: String?, week: Int): String {
+        val base = baseRepsTime?.takeIf { it.isNotBlank() } ?: "기준 강도"
+        val progressionInstruction = when (week) {
+            2 -> "2주차: 자세가 안정적이면 1-2회, 5-10초, 또는 5% 이내로만 증가"
+            3 -> "3주차: 자세가 무너지지 않으면 1세트 추가 또는 5-10% 볼륨 증가"
+            else -> "${week}주차: 피로가 과하지 않으면 난이도, 지속시간, 반복 수 중 하나만 5-10% 증가"
+        }
+        return "$base / $progressionInstruction"
     }
 }

@@ -45,7 +45,7 @@ class RoutineGenerationServiceTest {
     }
 
     @Test
-    fun `generateMultiWeekRoutine saves parsed workouts with expected phases and notification`() {
+    fun `generateMultiWeekRoutine saves parsed workouts with user id and notification`() {
         val request = request(totalWeeks = 4, activeDays = listOf(DayOfWeek.MON, DayOfWeek.WED))
         val weeklyWorkouts = listOf(
             workout("Warm up", "walk", "5 min"),
@@ -53,15 +53,11 @@ class RoutineGenerationServiceTest {
         )
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
         Mockito.`when`(routineRepository.saveAndFlush(anyValue())).thenAnswer { it.arguments[0] }
-        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, 1)).thenReturn(weeklyWorkouts)
-        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, 2)).thenReturn(weeklyWorkouts)
-        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, 3)).thenReturn(weeklyWorkouts)
+        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, "kakao:user-1")).thenReturn(weeklyWorkouts)
 
         service.generateMultiWeekRoutine(request, "kakao", "user-1")
 
-        Mockito.verify(workoutApiClient).generateSingleWeekRoutine(request, 1)
-        Mockito.verify(workoutApiClient, Mockito.times(2)).generateSingleWeekRoutine(request, 2)
-        Mockito.verify(workoutApiClient).generateSingleWeekRoutine(request, 3)
+        Mockito.verify(workoutApiClient, Mockito.times(1)).generateSingleWeekRoutine(request, "kakao:user-1")
 
         val routineCaptor = ArgumentCaptor.forClass(Routine::class.java)
         Mockito.verify(routineRepository, Mockito.atLeastOnce()).saveAndFlush(captureValue(routineCaptor))
@@ -73,6 +69,8 @@ class RoutineGenerationServiceTest {
         assertThat(savedRoutine.dailyWorkouts.flatMap { daily -> daily.sections.flatMap { it.exercises } })
             .extracting<String> { it.exerciseName }
             .contains("walk", "squat")
+        assertThat(savedRoutine.dailyWorkouts[2].sections.first().exercises.first().repsTime)
+            .contains("2주차")
         assertThat(savedRoutine.dailyWorkouts.mapNotNull { it.workoutDate })
             .allSatisfy { date ->
                 assertThat(date).isAfterOrEqualTo(LocalDate.now())
@@ -98,14 +96,11 @@ class RoutineGenerationServiceTest {
         }
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
         Mockito.`when`(routineRepository.saveAndFlush(anyValue())).thenAnswer { it.arguments[0] }
-        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, 1)).thenReturn(weeklyWorkouts)
-        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, 2)).thenReturn(weeklyWorkouts)
+        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, "kakao:user-1")).thenReturn(weeklyWorkouts)
 
         service.generateMultiWeekRoutine(request, "kakao", "user-1")
 
-        Mockito.verify(workoutApiClient).generateSingleWeekRoutine(request, 1)
-        Mockito.verify(workoutApiClient, Mockito.times(2)).generateSingleWeekRoutine(request, 2)
-        Mockito.verify(workoutApiClient, Mockito.never()).generateSingleWeekRoutine(request, 3)
+        Mockito.verify(workoutApiClient, Mockito.times(1)).generateSingleWeekRoutine(request, "kakao:user-1")
 
         val routineCaptor = ArgumentCaptor.forClass(Routine::class.java)
         Mockito.verify(routineRepository, Mockito.atLeastOnce()).saveAndFlush(captureValue(routineCaptor))
@@ -117,6 +112,10 @@ class RoutineGenerationServiceTest {
         assertThat(savedRoutine.dailyWorkouts.flatMap { it.sections }).hasSize(21)
         assertThat(savedRoutine.dailyWorkouts.flatMap { daily -> daily.sections.flatMap { it.exercises } })
             .hasSize(21)
+        assertThat(savedRoutine.dailyWorkouts[7].sections.first().exercises.first().repsTime)
+            .contains("2주차")
+        assertThat(savedRoutine.dailyWorkouts[14].sections.first().exercises.first().repsTime)
+            .contains("3주차")
         Mockito.verify(fcmService).sendNotification(Mockito.anyString(), Mockito.anyString())
     }
 
@@ -135,7 +134,7 @@ class RoutineGenerationServiceTest {
     fun `generateMultiWeekRoutine does not save empty routine when workout api fails`() {
         val request = request(totalWeeks = 3, activeDays = listOf(DayOfWeek.MON, DayOfWeek.TUE, DayOfWeek.WED))
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
-        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, 1))
+        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, "kakao:user-1"))
             .thenThrow(RuntimeException("workout api timeout"))
 
         assertThatThrownBy { service.generateMultiWeekRoutine(request, "kakao", "user-1") }

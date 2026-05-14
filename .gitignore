@@ -5,7 +5,7 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 .env
-
+github_p/*
 api/*
 
 ### STS ###
