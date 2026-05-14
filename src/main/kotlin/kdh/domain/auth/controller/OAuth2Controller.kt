@@ -1,6 +1,5 @@
 ﻿package kdh.domain.auth.controller
 
-import kdh.domain.user.service.UserAccountService
 import kdh.global.oauth.CustomOAuth2User
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -27,7 +26,6 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "AUTH", description = "OAuth2 콜백 API \n요청은 /oauth2/authorization/google")
 class OAuth2Controller(
     private val redisTemplate: RedisTemplate<String, Any>,
-    private val userAccountService: UserAccountService,
     @Value("\${DB_NAME}") private val dbName: String
 ) {
 
@@ -140,26 +138,5 @@ class OAuth2Controller(
         val key = "$dbName:${user.provider}:${user.providerId}"
         redisTemplate.delete(key)
         return ResponseEntity.ok(mapOf("success" to true, "message" to "로그아웃 되었습니다."))
-    }
-
-    @PostMapping("/withdrawal")
-    @Operation(
-        summary = "회원 탈퇴",
-        description = "회원 탈퇴를 처리하고 사용자 정보와 Refresh Token을 삭제합니다.",
-        security = [SecurityRequirement(name = "Bearer Authentication")]
-    )
-    fun withdrawal(
-        @Parameter(hidden = true)
-        @AuthenticationPrincipal user: CustomOAuth2User?
-    ): ResponseEntity<Map<String, Any>> {
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("success" to false, "message" to "유효한 로그인 정보가 없습니다. Authorization 헤더에 Bearer 토큰을 넣어주세요."))
-        }
-
-        userAccountService.withdraw(user.provider, user.providerId)
-        val key = "$dbName:${user.provider}:${user.providerId}"
-        redisTemplate.delete(key)
-        return ResponseEntity.ok(mapOf("success" to true, "message" to "회원 탈퇴 되었습니다."))
     }
 }

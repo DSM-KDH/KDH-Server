@@ -7,17 +7,22 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.http.HttpStatus
 
 class UserAccountControllerTest {
 
     private lateinit var userAccountService: UserAccountService
+    private lateinit var redisTemplate: RedisTemplate<String, Any>
     private lateinit var controller: UserAccountController
 
     @BeforeEach
     fun setUp() {
         userAccountService = Mockito.mock(UserAccountService::class.java)
-        controller = UserAccountController(userAccountService)
+        @Suppress("UNCHECKED_CAST")
+        val redisMock = Mockito.mock(RedisTemplate::class.java) as RedisTemplate<String, Any>
+        redisTemplate = redisMock
+        controller = UserAccountController(userAccountService, redisTemplate, "test-db")
     }
 
     @Test
@@ -36,6 +41,7 @@ class UserAccountControllerTest {
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NO_CONTENT)
         Mockito.verify(userAccountService).withdraw("kakao", "user-1")
+        Mockito.verify(redisTemplate).delete("test-db:kakao:user-1")
     }
 
     private fun principal(): CustomOAuth2User {

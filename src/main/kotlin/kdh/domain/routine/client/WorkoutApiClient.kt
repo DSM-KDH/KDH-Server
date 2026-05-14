@@ -46,11 +46,9 @@ class WorkoutApiClient(
 
     fun generateSingleWeekRoutine(request: RoutineCreateRequest, phase: Int): List<Map<String, Any>> {
         val threadId = UUID.randomUUID().toString()
-        var currentState = createInitialState(request, phase, threadId)
         val weeklyWorkouts = mutableListOf<Map<String, Any>>()
         val targetWorkoutCount = request.schedule.activeDays.size
         val startedAt = System.currentTimeMillis()
-        var generationAttempt = 1
 
         log.info(
             "Workout API weekly generation started. threadId={}, phase={}, targetWorkoutCount={}, activeDays={}, hoursPerDay={}, goalType={}, fitnessLevel={}, retryMax={}, retryBaseDelayMs={}",
@@ -66,6 +64,8 @@ class WorkoutApiClient(
         )
 
         while (weeklyWorkouts.size < targetWorkoutCount) {
+            val generationAttempt = weeklyWorkouts.size + 1
+            val currentState = createDailyState(request, phase, threadId, weeklyWorkouts)
             val requestStartedAt = System.currentTimeMillis()
             log.info(
                 "Calling Workout API. threadId={}, generationAttempt={}, currentDay={}, createdCount={}, targetWorkoutCount={}, requestBytes={}, currentWorkoutKeys={}, createdWorkoutCount={}",
@@ -110,21 +110,18 @@ class WorkoutApiClient(
                     responseState.day,
                     responseState.done
                 )
+                throw WorkoutApiEmptyResponseException()
             }
 
-            if (responseState.done || weeklyWorkouts.size >= targetWorkoutCount) {
+            if (weeklyWorkouts.size >= targetWorkoutCount) {
                 log.info(
-                    "Workout API weekly generation loop stopping. threadId={}, done={}, generatedCount={}, targetWorkoutCount={}",
+                    "Workout API weekly generation loop stopping. threadId={}, generatedCount={}, targetWorkoutCount={}",
                     threadId,
-                    responseState.done,
                     weeklyWorkouts.size,
                     targetWorkoutCount
                 )
                 break
             }
-
-            currentState = createNextState(responseState)
-            generationAttempt += 1
         }
 
         log.info(
@@ -213,28 +210,27 @@ class WorkoutApiClient(
             .block() ?: throw WorkoutApiEmptyResponseException()
     }
 
-    private fun createInitialState(request: RoutineCreateRequest, phase: Int, threadId: String): ExternalWorkoutApiRequest {
+    private fun createDailyState(
+        request: RoutineCreateRequest,
+        phase: Int,
+        threadId: String,
+        createdWorkouts: List<Map<String, Any>>
+    ): ExternalWorkoutApiRequest {
         val extraCriteria = buildPrompt(request, phase)
         val input = WorkoutApiInput(
-            day = 0,
+            day = createdWorkouts.size,
             phase = phase,
-            workouts_in_week = request.schedule.activeDays.size,
+            workouts_in_week = 1,
             workout_length = "${request.schedule.hoursPerDay}시간",
             extra_criteria = extraCriteria,
             client_info = "User(FCM Token: ${request.fcmToken})",
             current_workout = emptyMap(),
-            created_workouts = emptyList(),
+            created_workouts = createdWorkouts,
             user_feedback = "",
             done = false,
             thread_id = threadId
         )
         val config = WorkoutApiConfig(configurable = Configurable(thread_id = threadId))
-        return ExternalWorkoutApiRequest(input = input, config = config)
-    }
-
-    private fun createNextState(prevState: WorkoutApiInput): ExternalWorkoutApiRequest {
-        val input = prevState.copy(user_feedback = "CONTINUE")
-        val config = WorkoutApiConfig(configurable = Configurable(thread_id = prevState.thread_id))
         return ExternalWorkoutApiRequest(input = input, config = config)
     }
 

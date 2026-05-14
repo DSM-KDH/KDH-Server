@@ -131,6 +131,39 @@ class RoutineServiceTest {
     }
 
     @Test
+    fun `getMyRoutineByDate flattens a large routine day without dropping exercises`() {
+        val date = LocalDate.of(2026, 5, 14)
+        val dailyWorkout = DailyWorkout(day = 1, workoutDate = date)
+        var exerciseId = 1L
+        repeat(10) { sectionIndex ->
+            val section = WorkoutSection(name = "Section ${sectionIndex + 1}")
+            repeat(10) { exerciseIndex ->
+                section.addExercise(
+                    ExerciseDetail(
+                        id = exerciseId++,
+                        exerciseName = "Exercise ${sectionIndex + 1}-${exerciseIndex + 1}",
+                        repsTime = "${exerciseIndex + 1}0 reps",
+                        completed = exerciseIndex % 2 == 0
+                    )
+                )
+            }
+            dailyWorkout.addSection(section)
+        }
+        Mockito.`when`(
+            dailyWorkoutRepository.findByRoutineUserProviderAndRoutineUserProviderIdAndWorkoutDate("kakao", "user-1", date)
+        ).thenReturn(listOf(dailyWorkout))
+
+        val response = service.getMyRoutineByDate(date, "kakao", "user-1")
+
+        assertThat(response.workouts).hasSize(100)
+        assertThat(response.workouts.first().sectionName).isEqualTo("Section 1")
+        assertThat(response.workouts.first().exerciseName).isEqualTo("Exercise 1-1")
+        assertThat(response.workouts.last().sectionName).isEqualTo("Section 10")
+        assertThat(response.workouts.last().exerciseName).isEqualTo("Exercise 10-10")
+        assertThat(response.workouts.count { it.completed }).isEqualTo(50)
+    }
+
+    @Test
     fun `getMyRoutineDates queries from one month ago and returns repository dates`() {
         val expectedDates = listOf(LocalDate.now(), LocalDate.now().plusDays(2))
         val fromDate = LocalDate.now().minusMonths(1)

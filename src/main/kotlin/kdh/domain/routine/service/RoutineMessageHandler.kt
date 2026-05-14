@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kdh.domain.routine.dto.RoutineCreationMessage
 import kdh.domain.routine.exception.RoutineGenerationFailedException
+import kdh.domain.user.exception.UserNotFoundException
 import kdh.global.exception.KdhException
 import org.springframework.amqp.rabbit.annotation.RabbitListener
 import org.slf4j.LoggerFactory
@@ -45,6 +46,14 @@ class RoutineMessageHandler(
                 messagePayload.provider,
                 messagePayload.providerId,
                 System.currentTimeMillis() - startedAt
+            )
+        } catch (e: UserNotFoundException) {
+            log.warn(
+                "Routine generation skipped because queue owner no longer exists. provider={}, providerId={}, elapsedMs={}, reason={}",
+                messagePayload.provider,
+                messagePayload.providerId,
+                System.currentTimeMillis() - startedAt,
+                e.message
             )
         } catch (e: Exception) {
             log.error(

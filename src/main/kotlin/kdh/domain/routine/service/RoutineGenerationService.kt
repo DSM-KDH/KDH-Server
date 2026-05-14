@@ -59,12 +59,9 @@ class RoutineGenerationService(
         )
 
         val routineStartDate = LocalDate.now()
-        var routine = routineRepository.saveAndFlush(
-            Routine(user = user, totalWeeks = request.schedule.totalWeeks, startDate = routineStartDate)
-        )
+        val routine = Routine(user = user, totalWeeks = request.schedule.totalWeeks, startDate = routineStartDate)
         log.info(
-            "Routine container saved before generation. routineId={}, provider={}, providerId={}, startDate={}, totalWeeks={}",
-            routine.id,
+            "Routine container prepared before generation. provider={}, providerId={}, startDate={}, totalWeeks={}",
             provider,
             providerId,
             routineStartDate,
@@ -95,8 +92,7 @@ class RoutineGenerationService(
                 .take(request.schedule.activeDays.size)
 
             log.info(
-                "Routine week generation started. routineId={}, week={}, phase={}, activeDays={}, plannedDates={}",
-                routine.id,
+                "Routine week generation started. week={}, phase={}, activeDays={}, plannedDates={}",
                 week,
                 phase,
                 request.schedule.activeDays,
@@ -105,8 +101,7 @@ class RoutineGenerationService(
 
             val weeklyWorkoutsJson = workoutApiClient.generateSingleWeekRoutine(request, phase)
             log.info(
-                "Routine week generation API completed. routineId={}, week={}, phase={}, generatedDays={}, expectedDays={}, elapsedMs={}",
-                routine.id,
+                "Routine week generation API completed. week={}, phase={}, generatedDays={}, expectedDays={}, elapsedMs={}",
                 week,
                 phase,
                 weeklyWorkoutsJson.size,
@@ -116,8 +111,7 @@ class RoutineGenerationService(
 
             if (weeklyWorkoutsJson.size < request.schedule.activeDays.size) {
                 log.warn(
-                    "Routine week generation returned fewer workouts than expected. routineId={}, week={}, generatedDays={}, expectedDays={}",
-                    routine.id,
+                    "Routine week generation returned fewer workouts than expected. week={}, generatedDays={}, expectedDays={}",
                     week,
                     weeklyWorkoutsJson.size,
                     request.schedule.activeDays.size
@@ -129,8 +123,7 @@ class RoutineGenerationService(
                 val parseStartedAt = System.currentTimeMillis()
 
                 log.info(
-                    "Daily workout parse started. routineId={}, week={}, day={}, indexInWeek={}, workoutDate={}, sectionKeys={}",
-                    routine.id,
+                    "Daily workout parse started. week={}, day={}, indexInWeek={}, workoutDate={}, sectionKeys={}",
                     week,
                     dayCounter,
                     index,
@@ -143,8 +136,7 @@ class RoutineGenerationService(
                 val exerciseCount = dailyWorkout.sections.sumOf { it.exercises.size }
 
                 log.info(
-                    "Daily workout parsed. routineId={}, week={}, day={}, workoutDate={}, sectionCount={}, exerciseCount={}, elapsedMs={}",
-                    routine.id,
+                    "Daily workout parsed. week={}, day={}, workoutDate={}, sectionCount={}, exerciseCount={}, elapsedMs={}",
                     week,
                     dayCounter,
                     workoutDate,
@@ -154,10 +146,8 @@ class RoutineGenerationService(
                 )
 
                 routine.addDailyWorkout(dailyWorkout)
-                routine = routineRepository.saveAndFlush(routine)
                 log.info(
-                    "Daily workout saved. routineId={}, provider={}, providerId={}, week={}, day={}, workoutDate={}, savedDailyWorkoutCount={}, savedSectionCount={}, savedExerciseCount={}",
-                    routine.id,
+                    "Daily workout prepared. provider={}, providerId={}, week={}, day={}, workoutDate={}, preparedDailyWorkoutCount={}, preparedSectionCount={}, preparedExerciseCount={}",
                     provider,
                     providerId,
                     week,

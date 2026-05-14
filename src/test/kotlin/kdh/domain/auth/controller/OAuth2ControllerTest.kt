@@ -1,6 +1,5 @@
 package kdh.domain.auth.controller
 
-import kdh.domain.user.service.UserAccountService
 import kdh.global.oauth.CustomOAuth2User
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -12,7 +11,6 @@ import org.springframework.http.HttpStatus
 class OAuth2ControllerTest {
 
     private lateinit var redisTemplate: RedisTemplate<String, Any>
-    private lateinit var userAccountService: UserAccountService
     private lateinit var controller: OAuth2Controller
 
     @BeforeEach
@@ -20,8 +18,7 @@ class OAuth2ControllerTest {
         @Suppress("UNCHECKED_CAST")
         val redisMock = Mockito.mock(RedisTemplate::class.java) as RedisTemplate<String, Any>
         redisTemplate = redisMock
-        userAccountService = Mockito.mock(UserAccountService::class.java)
-        controller = OAuth2Controller(redisTemplate, userAccountService, "test-db")
+        controller = OAuth2Controller(redisTemplate, "test-db")
     }
 
     @Test
@@ -69,23 +66,6 @@ class OAuth2ControllerTest {
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
         Mockito.verifyNoInteractions(redisTemplate)
-    }
-
-    @Test
-    fun `withdrawal deletes user and refresh token for authenticated user`() {
-        val response = controller.withdrawal(principal())
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
-        Mockito.verify(userAccountService).withdraw("kakao", "user-1")
-        Mockito.verify(redisTemplate).delete("test-db:kakao:user-1")
-    }
-
-    @Test
-    fun `withdrawal returns unauthorized when principal is missing`() {
-        val response = controller.withdrawal(null)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        Mockito.verifyNoInteractions(userAccountService, redisTemplate)
     }
 
     private fun principal(): CustomOAuth2User {
