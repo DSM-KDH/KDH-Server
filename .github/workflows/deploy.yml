@@ -61,23 +61,23 @@ jobs:
             docker pull ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh
 
             # 5. --env-file 옵션으로 .env 파일 전체 적용해서 실행
-            docker run -d -p 8080:8080 --name my-spring-app \
+            docker run -d -p 127.0.0.1:8080:8080 --name my-spring-app \
               --add-host=host.docker.internal:host-gateway \
               --env-file .env \
               ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh
             
             # 6. Health Check (최대 2분 동안 3초 간격으로 확인)
-            echo "Starting health check for Swagger UI..."
+            echo "Starting health check for OpenAPI docs..."
             MAX_RETRIES=40  # 40번 * 3초 = 120초(2분)
             RETRY_COUNT=0
-            HEALTH_URL="http://localhost:8080/swagger-ui/index.html"
+            HEALTH_URL="http://localhost:8080/v3/api-docs"
 
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
               # HTTP 상태 코드가 200인지 확인
               HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" $HEALTH_URL)
               
               if [ "$HTTP_STATUS" -eq 200 ]; then
-                echo "Successfully deployed! Swagger UI is up."
+                echo "Successfully deployed! OpenAPI docs are up."
                 exit 0
               fi
 
