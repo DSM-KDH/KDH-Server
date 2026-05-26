@@ -17,17 +17,21 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Mockito
 import java.time.LocalDateTime
 
+import kdh.domain.routine.repository.RoutineRepository
+
 class UserProfileServiceTest {
 
     private lateinit var userRepository: UserRepository
     private lateinit var profileRepository: UserProfileHistoryRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var service: UserProfileService
 
     @BeforeEach
     fun setUp() {
         userRepository = Mockito.mock(UserRepository::class.java)
         profileRepository = Mockito.mock(UserProfileHistoryRepository::class.java)
-        service = UserProfileService(userRepository, profileRepository)
+        routineRepository = Mockito.mock(RoutineRepository::class.java)
+        service = UserProfileService(userRepository, profileRepository, routineRepository)
     }
 
     @Test
@@ -135,5 +139,30 @@ class UserProfileServiceTest {
             gender = Gender.FEMALE,
             recordedAt = recordedAt
         )
+    }
+
+    @Test
+    fun `updateProfile updates user fcmToken if provided`() {
+        val user = user()
+        val request = UserProfileUpdateRequest(heightCm = 172.5, weightKg = 68.0, gender = Gender.MALE, fcmToken = "new-token")
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user)
+        Mockito.`when`(profileRepository.save(anyValue())).thenAnswer { invocation ->
+            invocation.arguments[0] as UserProfileHistory
+        }
+
+        service.updateProfile("kakao", "user-1", request)
+
+        assertThat(user.fcmToken).isEqualTo("new-token")
+        Mockito.verify(userRepository).save(user)
+    }
+
+    @Test
+    fun `getUserStatus returns true when user has routine`() {
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        Mockito.`when`(routineRepository.existsByUserProviderAndUserProviderId("kakao", "user-1")).thenReturn(true)
+
+        val status = service.getUserStatus("kakao", "user-1")
+
+        assertThat(status.hasAiRoutine).isTrue()
     }
 }

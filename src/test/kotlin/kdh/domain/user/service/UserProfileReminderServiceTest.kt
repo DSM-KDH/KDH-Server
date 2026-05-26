@@ -6,6 +6,7 @@ import kdh.domain.user.enum.Gender
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.infra.fcm.FcmService
 import kdh.anyValue
+import kdh.eqValue
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -37,7 +38,12 @@ class UserProfileReminderServiceTest {
 
         service.sendProfileUpdateReminders()
 
-        Mockito.verify(fcmService, Mockito.times(1)).sendNotification(Mockito.anyString(), Mockito.anyString())
+        Mockito.verify(fcmService, Mockito.times(1)).sendNotification(
+            token = eqValue("token-1"),
+            title = eqValue("신체 정보 업데이트 알림"),
+            body = eqValue("키, 몸무게, 성별 정보를 최신 상태로 업데이트해주세요."),
+            data = anyValue()
+        )
         assertThat(latestDueProfile.nextReminderAt).isAfter(LocalDateTime.now().plusDays(25))
         assertThat(staleDueProfile.nextReminderAt).isEqualTo(staleDueProfile.recordedAt.plusMonths(1))
     }
@@ -45,7 +51,7 @@ class UserProfileReminderServiceTest {
     private fun profile(id: Long): UserProfileHistory {
         return UserProfileHistory(
             id = id,
-            user = User(provider = "kakao", providerId = "user-1", name = "Tester"),
+            user = User(provider = "kakao", providerId = "user-1", name = "Tester", fcmToken = "token-1"),
             heightCm = 170.0,
             weightKg = 65.0,
             gender = Gender.FEMALE,

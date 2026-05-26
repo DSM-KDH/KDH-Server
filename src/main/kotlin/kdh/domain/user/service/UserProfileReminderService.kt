@@ -39,8 +39,9 @@ class UserProfileReminderService(
                 profile.nextReminderAt
             )
             fcmService.sendNotification(
-                "신체 정보 업데이트 알림",
-                "키, 몸무게, 성별 정보를 최신 상태로 업데이트해주세요."
+                token = profile.user.fcmToken,
+                title = "신체 정보 업데이트 알림",
+                body = "키, 몸무게, 성별 정보를 최신 상태로 업데이트해주세요."
             )
             profile.nextReminderAt = now.plusMonths(1)
         }

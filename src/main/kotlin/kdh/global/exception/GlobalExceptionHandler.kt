@@ -5,9 +5,11 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -51,6 +53,27 @@ class GlobalExceptionHandler {
         log.warn("Invalid request body: {}", detail ?: ex.message, ex)
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorMessageResponse(message))
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleMethodArgumentTypeMismatchException(
+        ex: MethodArgumentTypeMismatchException
+    ): ResponseEntity<ErrorMessageResponse> {
+        val message = when (ex.name) {
+            "date" -> "invalid date format. Use yyyy-MM-dd."
+            else -> "invalid request parameter: ${ex.name}"
+        }
+
+        log.warn("Invalid request parameter. name={}, value={}, requiredType={}", ex.name, ex.value, ex.requiredType?.name)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorMessageResponse(message))
+    }
+
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResourceFoundException(ex: NoResourceFoundException): ResponseEntity<ErrorMessageResponse> {
+        log.warn("No resource found. method={}, path={}", ex.httpMethod, ex.resourcePath)
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorMessageResponse("not found"))
     }
 
     @ExceptionHandler(Exception::class)

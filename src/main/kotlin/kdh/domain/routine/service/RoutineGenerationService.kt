@@ -10,6 +10,7 @@ import kdh.domain.routine.entity.ExerciseDetail
 import kdh.domain.routine.entity.Routine
 import kdh.domain.routine.entity.WorkoutSection
 import kdh.domain.routine.repository.RoutineRepository
+import kdh.domain.routine.exception.InvalidRoutineGenerationResultException
 import kdh.domain.user.repository.UserRepository
 import kdh.domain.user.exception.UserNotFoundException
 import kdh.infra.fcm.FcmService
@@ -26,10 +27,23 @@ class RoutineGenerationService(
 ) {
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val log = LoggerFactory.getLogger(javaClass)
+    private companion object {
+        const val PHASE_MULTI_WEEK_GENERATING = "MULTI_WEEK_GENERATING"
+        const val PHASE_PERSISTING_WEEKS = "PERSISTING_WEEKS"
+        const val PHASE_COMPLETED = "COMPLETED"
+        const val MAX_PARALLEL_WEEK_GENERATION = 4
+    }
 
-    fun generateMultiWeekRoutine(request: RoutineCreateRequest, provider: String, providerId: String) {
+    fun generateMultiWeekRoutine(
+        request: RoutineCreateRequest,
+        provider: String,
+        providerId: String,
+        feedback: String? = null,
+        regenerationCount: Int = 0
+    ) {
         val startedAt = System.currentTimeMillis()
         val targetWorkoutCount = request.schedule.totalWeeks * request.schedule.activeDays.size
+        val timingEstimate = estimateRoutineTiming(request, targetWorkoutCount)
 
         log.info(
             "Routine generation started. provider={}, providerId={}, totalWeeks={}, activeDays={}, hoursPerDay={}, goalType={}, targetWeight={}, targetBodyParts={}, fitnessLevel={}, preferredExerciseTypes={}, locations={}, equipments={}, targetWorkoutCount={}",
@@ -47,6 +61,17 @@ class RoutineGenerationService(
             request.environment.equipments,
             targetWorkoutCount
         )
+        sendRoutineProgress(
+            token = request.fcmToken,
+            status = "STARTED",
+            phase = PHASE_MULTI_WEEK_GENERATING,
+            createdCount = 0,
+            totalCount = targetWorkoutCount,
+            timingEstimate = timingEstimate,
+            startedAtMillis = startedAt,
+            notificationTitle = "루틴 생성 시작",
+            notificationBody = "맞춤 운동 루틴을 만들기 시작했어요."
+        )
 
         val user = userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw UserNotFoundException(provider, providerId)
@@ -58,150 +83,216 @@ class RoutineGenerationService(
             user.name
         )
 
-        val routineStartDate = LocalDate.now()
-        val routine = Routine(user = user, totalWeeks = request.schedule.totalWeeks, startDate = routineStartDate)
-        log.info(
-            "Routine container prepared before generation. provider={}, providerId={}, startDate={}, totalWeeks={}",
-            provider,
-            providerId,
-            routineStartDate,
-            request.schedule.totalWeeks
-        )
-
-        var dayCounter = 1
-        val workoutDatesByGenerationOrder = generateWorkoutDates(
-            startDate = routineStartDate,
-            activeDays = request.schedule.activeDays,
-            count = targetWorkoutCount
-        )
-
-        log.info(
-            "Routine workout dates planned. routineId={}, startDate={}, activeDays={}, targetWorkoutCount={}, plannedDates={}",
-            routine.id,
-            routineStartDate,
-            request.schedule.activeDays,
-            targetWorkoutCount,
-            workoutDatesByGenerationOrder
-        )
-
         val userId = "$provider:$providerId"
-        val apiStartedAt = System.currentTimeMillis()
-        val baseWeeklyWorkoutsJson = workoutApiClient.generateSingleWeekRoutine(request, userId)
-        log.info(
-            "Routine base week generation API completed. userId={}, generatedDays={}, expectedDays={}, elapsedMs={}",
-            userId,
-            baseWeeklyWorkoutsJson.size,
-            request.schedule.activeDays.size,
-            System.currentTimeMillis() - apiStartedAt
-        )
+        var lastException: Exception? = null
+        val maxAttempts = 3
 
-        if (baseWeeklyWorkoutsJson.size < request.schedule.activeDays.size) {
-            log.warn(
-                "Routine base week generation returned fewer workouts than expected. generatedDays={}, expectedDays={}",
-                baseWeeklyWorkoutsJson.size,
-                request.schedule.activeDays.size
-            )
-        }
-
-        for (week in 1..request.schedule.totalWeeks) {
-            val weekStartedAt = System.currentTimeMillis()
-            val workoutDates = workoutDatesByGenerationOrder
-                .drop((week - 1) * request.schedule.activeDays.size)
-                .take(request.schedule.activeDays.size)
-            val weeklyWorkoutsJson = applyWeeklyProgression(baseWeeklyWorkoutsJson, week)
-
-            log.info(
-                "Routine week expansion started. week={}, userId={}, activeDays={}, plannedDates={}",
-                week,
-                userId,
-                request.schedule.activeDays,
-                workoutDates
-            )
-
-            log.info(
-                "Routine week expansion completed. week={}, userId={}, generatedDays={}, expectedDays={}, elapsedMs={}",
-                week,
-                userId,
-                weeklyWorkoutsJson.size,
-                request.schedule.activeDays.size,
-                System.currentTimeMillis() - weekStartedAt
-            )
-
-            if (weeklyWorkoutsJson.size < request.schedule.activeDays.size) {
-                log.warn(
-                    "Routine week generation returned fewer workouts than expected. week={}, generatedDays={}, expectedDays={}",
-                    week,
-                    weeklyWorkoutsJson.size,
-                    request.schedule.activeDays.size
-                )
-            }
-
-            for ((index, workoutJson) in weeklyWorkoutsJson.withIndex()) {
-                val workoutDate = workoutDates.getOrNull(index) ?: routineStartDate.plusDays((dayCounter - 1).toLong())
-                val parseStartedAt = System.currentTimeMillis()
-
-                log.info(
-                    "Daily workout parse started. week={}, day={}, indexInWeek={}, workoutDate={}, sectionKeys={}",
-                    week,
-                    dayCounter,
-                    index,
-                    workoutDate,
-                    workoutJson.keys
+        for (attempt in 1..maxAttempts) {
+            try {
+                log.info("Routine generation attempt {}/{} started for userId={}", attempt, maxAttempts, userId)
+                val routineStartDate = LocalDate.now()
+                val routine = Routine(
+                    user = user,
+                    totalWeeks = request.schedule.totalWeeks,
+                    startDate = routineStartDate,
+                    originalRequestJson = objectMapper.writeValueAsString(request),
+                    regenerationCount = regenerationCount
                 )
 
-                val dailyWorkout = parseAndCreateDailyWorkout(workoutJson, dayCounter, workoutDate)
-                val sectionCount = dailyWorkout.sections.size
-                val exerciseCount = dailyWorkout.sections.sumOf { it.exercises.size }
-
+                val apiStartedAt = System.currentTimeMillis()
+                val weeklyWorkoutsByWeek = workoutApiClient.generateMultiWeekRoutine(request, userId, feedback)
                 log.info(
-                    "Daily workout parsed. week={}, day={}, workoutDate={}, sectionCount={}, exerciseCount={}, elapsedMs={}",
-                    week,
-                    dayCounter,
-                    workoutDate,
-                    sectionCount,
-                    exerciseCount,
-                    System.currentTimeMillis() - parseStartedAt
+                    "Routine multi-week generation API completed on attempt {}. userId={}, generatedWeeks={}, expectedWeeks={}, generatedDays={}, expectedDaysPerWeek={}, elapsedMs={}",
+                    attempt,
+                    userId,
+                    weeklyWorkoutsByWeek.size,
+                    request.schedule.totalWeeks,
+                    weeklyWorkoutsByWeek.sumOf { it.size },
+                    request.schedule.activeDays.size,
+                    System.currentTimeMillis() - apiStartedAt
                 )
 
-                routine.addDailyWorkout(dailyWorkout)
+                sendRoutineProgress(
+                    token = request.fcmToken,
+                    status = "GENERATING",
+                    phase = PHASE_PERSISTING_WEEKS,
+                    createdCount = 0,
+                    totalCount = targetWorkoutCount,
+                    timingEstimate = timingEstimate,
+                    startedAtMillis = startedAt,
+                    notificationTitle = "루틴 생성 중",
+                    notificationBody = "기본 운동 계획을 준비했어요."
+                )
+
+                val workoutDatesByGenerationOrder = generateWorkoutDates(
+                    startDate = routineStartDate,
+                    activeDays = request.schedule.activeDays,
+                    count = targetWorkoutCount
+                )
+
+                var dayCounter = 1
+                for (week in 1..request.schedule.totalWeeks) {
+                    val weekStartedAt = System.currentTimeMillis()
+                    val workoutDates = workoutDatesByGenerationOrder
+                        .drop((week - 1) * request.schedule.activeDays.size)
+                        .take(request.schedule.activeDays.size)
+                    val weeklyWorkoutsJson = weeklyWorkoutsByWeek.getOrElse(week - 1) { emptyList() }
+
+                    for ((index, workoutJson) in weeklyWorkoutsJson.withIndex()) {
+                        val workoutDate = workoutDates.getOrNull(index) ?: routineStartDate.plusDays((dayCounter - 1).toLong())
+                        val dailyWorkout = parseAndCreateDailyWorkout(workoutJson, dayCounter, workoutDate)
+                        routine.addDailyWorkout(dailyWorkout)
+                        dayCounter += 1
+                    }
+
+                    log.info(
+                        "Routine week expansion completed. attempt={}, week={}, userId={}, generatedDays={}, expectedDays={}, elapsedMs={}",
+                        attempt,
+                        week,
+                        userId,
+                        weeklyWorkoutsJson.size,
+                        request.schedule.activeDays.size,
+                        System.currentTimeMillis() - weekStartedAt
+                    )
+
+                    // 매 주차가 생성될 때마다 완료도와 남은 분량 전송
+                    val progressPercent = calculateProgressPercent(routine.dailyWorkouts.size, targetWorkoutCount)
+                    sendRoutineProgress(
+                        token = request.fcmToken,
+                        status = "GENERATING",
+                        phase = PHASE_PERSISTING_WEEKS,
+                        createdCount = routine.dailyWorkouts.size,
+                        totalCount = targetWorkoutCount,
+                        timingEstimate = timingEstimate,
+                        startedAtMillis = startedAt,
+                        notificationTitle = "루틴 생성 중 ($progressPercent%)",
+                        notificationBody = "${week}주차 운동 계획이 준비되었어요. 전체 ${request.schedule.totalWeeks}주 중 ${week}주 완료!"
+                    )
+                }
+
+                // AI 응답 검증 (한글 검증 및 정상 루틴 데이터 구조 검증)
+                validateRoutine(routine, targetWorkoutCount)
+
+                // 최종 성공 시 DB 저장 및 완료 메시지 1회 발송
+                val savedRoutine = routineRepository.saveAndFlush(routine)
                 log.info(
-                    "Daily workout prepared. provider={}, providerId={}, week={}, day={}, workoutDate={}, preparedDailyWorkoutCount={}, preparedSectionCount={}, preparedExerciseCount={}",
+                    "Routine generation success on attempt {}/{}. routineId={}, provider={}, providerId={}, dailyWorkoutCount={}, elapsedMs={}",
+                    attempt,
+                    maxAttempts,
+                    savedRoutine.id,
                     provider,
                     providerId,
-                    week,
-                    dayCounter,
-                    workoutDate,
-                    routine.dailyWorkouts.size,
-                    routine.dailyWorkouts.sumOf { it.sections.size },
-                    routine.dailyWorkouts.sumOf { daily -> daily.sections.sumOf { it.exercises.size } }
+                    savedRoutine.dailyWorkouts.size,
+                    System.currentTimeMillis() - startedAt
                 )
 
-                dayCounter += 1
+                sendRoutineProgress(
+                    token = request.fcmToken,
+                    status = "COMPLETED",
+                    phase = PHASE_COMPLETED,
+                    createdCount = savedRoutine.dailyWorkouts.size,
+                    totalCount = targetWorkoutCount,
+                    timingEstimate = timingEstimate,
+                    startedAtMillis = startedAt,
+                    notificationTitle = "루틴 생성 완료!",
+                    notificationBody = "${request.schedule.totalWeeks}주 동안의 맞춤 운동 루틴이 준비됐어요."
+                )
+                return
+
+            } catch (e: Exception) {
+                log.warn(
+                    "[Attempt {}/{}] Routine validation or API generation failed. provider={}, providerId={}, reason={}",
+                    attempt,
+                    maxAttempts,
+                    provider,
+                    providerId,
+                    e.message,
+                    e
+                )
+                lastException = e
             }
         }
 
-        val savedRoutine = routineRepository.saveAndFlush(routine)
-        log.info(
-            "Routine generation completed. routineId={}, provider={}, providerId={}, dailyWorkoutCount={}, sectionCount={}, exerciseCount={}, elapsedMs={}",
-            savedRoutine.id,
-            provider,
-            providerId,
-            savedRoutine.dailyWorkouts.size,
-            savedRoutine.dailyWorkouts.sumOf { it.sections.size },
-            savedRoutine.dailyWorkouts.sumOf { daily -> daily.sections.sumOf { it.exercises.size } },
-            System.currentTimeMillis() - startedAt
-        )
+        // 3회 실패 시 최종 오류 로그 및 예외 투척
+        log.error("Routine generation failed after {} attempts. provider={}, providerId={}", maxAttempts, provider, providerId)
+        throw lastException ?: InvalidRoutineGenerationResultException("AI 운동 계획 생성 및 검증에 모두 실패했습니다.")
+    }
 
-        fcmService.sendNotification(
-            "루틴 생성 완료!",
-            "${request.schedule.totalWeeks}주 동안의 맞춤형 운동 루틴이 준비되었습니다."
-        )
-        log.info(
-            "Routine generation notification sent. routineId={}, provider={}, providerId={}",
-            savedRoutine.id,
-            provider,
-            providerId
-        )
+    private fun validateRoutine(routine: Routine, targetWorkoutCount: Int) {
+        val workouts = routine.dailyWorkouts
+        val totalExercises = workouts.flatMap { it.sections }.flatMap { it.exercises }
+
+        // 1. 운동 개수 검증
+        if (totalExercises.isEmpty()) {
+            throw InvalidRoutineGenerationResultException("생성된 운동 리스트가 비어있습니다.")
+        }
+
+        // 2. 섹션 개수 검증 (각 운동 날짜에 최소 1개 섹션 존재)
+        for (dw in workouts) {
+            if (dw.sections.isEmpty()) {
+                throw InvalidRoutineGenerationResultException("Day ${dw.day}에 운동 섹션(준비 운동 등)이 존재하지 않습니다.")
+            }
+        }
+
+        // 3. 정확한 운동 일수 정합성 검증
+        if (workouts.size != targetWorkoutCount) {
+            throw InvalidRoutineGenerationResultException("생성된 운동 일수(${workouts.size})가 목표 설정치($targetWorkoutCount)와 일치하지 않습니다.")
+        }
+
+        // 4. 운동명 유효 글자수 검증 (비어있음, '이름 없음', 2글자 미만 차단)
+        for (ex in totalExercises) {
+            val name = ex.exerciseName.trim()
+            if (name.isBlank() || name == "이름 없음" || name.length < 2) {
+                throw InvalidRoutineGenerationResultException("부적절하거나 너무 짧은 운동명(2글자 미만)이 포함되어 있습니다: '${ex.exerciseName}'")
+            }
+        }
+
+        // 5. 허용 문자 정규식 검증 (영어, 한국어, 숫자, 공백, 표준 특수문자만 허용)
+        val allowedRegex = Regex("""^[a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣\s!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]+$""")
+        for (ex in totalExercises) {
+            if (!ex.exerciseName.matches(allowedRegex)) {
+                throw InvalidRoutineGenerationResultException(
+                    "운동명에 허용되지 않은 문자(한자, 일어, 이모지 등)가 포함되어 있습니다: '${ex.exerciseName}'"
+                )
+            }
+        }
+
+        // 6. 한글 비율 90% 이상 검증 (전체 운동 중 최소 1글자 이상 한글 포함 비율)
+        val koreanExercisesCount = totalExercises.count { it.exerciseName.contains(Regex("[ㄱ-ㅎㅏ-ㅣ가-힣]")) }
+        val koreanRatio = koreanExercisesCount.toDouble() / totalExercises.size.toDouble()
+        if (koreanRatio < 0.9) {
+            throw InvalidRoutineGenerationResultException(
+                "한글이 포함된 운동명의 비율이 90% 미만입니다. ($koreanExercisesCount/${totalExercises.size})"
+            )
+        }
+
+        // 7. 수행 방법(강도/횟수) 필수화 검증 (repsTime 누락 비율 10% 이상 차단)
+        val invalidRepsCount = totalExercises.count { it.repsTime.isNullOrBlank() || it.repsTime?.trim() == "값 없음" }
+        val invalidRepsRatio = invalidRepsCount.toDouble() / totalExercises.size.toDouble()
+        if (invalidRepsRatio >= 0.10) {
+            throw InvalidRoutineGenerationResultException(
+                "수행 방법(강도/횟수)이 누락되었거나 불완전한 운동의 비율이 10% 이상입니다. ($invalidRepsCount/${totalExercises.size})"
+            )
+        }
+
+        // 8. 인코딩 깨짐 및 자모음 나열 차단 검증
+        val brokenOrJamoRegex = Regex("""\uFFFD|[ㄱ-ㅎ]{2,}|[ㅏ-ㅣ]{2,}""")
+        for (ex in totalExercises) {
+            if (ex.exerciseName.contains(brokenOrJamoRegex)) {
+                throw InvalidRoutineGenerationResultException(
+                    "운동명에 인코딩 깨짐() 또는 완성되지 않은 자모음 나열이 포함되어 있습니다: '${ex.exerciseName}'"
+                )
+            }
+        }
+        for (dw in workouts) {
+            for (sec in dw.sections) {
+                if (sec.name.contains(brokenOrJamoRegex)) {
+                    throw InvalidRoutineGenerationResultException(
+                        "섹션명에 인코딩 깨짐() 또는 완성되지 않은 자모음 나열이 포함되어 있습니다: '${sec.name}'"
+                    )
+                }
+            }
+        }
     }
 
     private fun parseAndCreateDailyWorkout(
@@ -355,4 +446,133 @@ class RoutineGenerationService(
         }
         return "$base / $progressionInstruction"
     }
+
+    private fun sendRoutineProgress(
+        token: String?,
+        status: String,
+        phase: String,
+        createdCount: Int,
+        totalCount: Int,
+        timingEstimate: RoutineTimingEstimate,
+        startedAtMillis: Long,
+        notificationTitle: String,
+        notificationBody: String
+    ) {
+        val progressPercent = calculateProgressPercent(createdCount, totalCount)
+        val elapsedSeconds = ((System.currentTimeMillis() - startedAtMillis) / 1000L).toInt().coerceAtLeast(0)
+        val firstWeekRemainingSeconds = (timingEstimate.firstWeekSeconds - elapsedSeconds).coerceAtLeast(0)
+        val remainingSeconds = estimateRemainingSeconds(
+            status = status,
+            phase = phase,
+            createdCount = createdCount,
+            totalCount = totalCount,
+            elapsedSeconds = elapsedSeconds,
+            timingEstimate = timingEstimate
+        )
+        fcmService.sendNotification(
+            token = token,
+            title = notificationTitle,
+            body = notificationBody,
+            data = mapOf(
+                "type" to "ROUTINE_GENERATION",
+                "status" to status,
+                "phase" to phase,
+                "createdCount" to createdCount.toString(),
+                "totalCount" to totalCount.toString(),
+                "progressPercent" to progressPercent.toString(),
+                "estimatedFirstWeekMinutes" to secondsToDisplayMinutes(timingEstimate.firstWeekSeconds).toString(),
+                "estimatedFirstWeekRemainingMinutes" to secondsToDisplayMinutes(firstWeekRemainingSeconds).toString(),
+                "estimatedTotalMinutes" to secondsToDisplayMinutes(timingEstimate.totalSeconds).toString(),
+                "estimatedRemainingMinutes" to secondsToDisplayMinutes(remainingSeconds).toString(),
+                "completed" to (status == "COMPLETED").toString()
+            )
+        )
+    }
+
+    private fun calculateProgressPercent(createdCount: Int, totalCount: Int): Int {
+        if (totalCount <= 0) {
+            return 0
+        }
+        return (createdCount * 100 / totalCount).coerceIn(0, 100)
+    }
+
+    private fun secondsToDisplayMinutes(seconds: Int): Int {
+        if (seconds <= 0) {
+            return 0
+        }
+        return (seconds + 59) / 60
+    }
+
+    private fun estimateRoutineTiming(
+        request: RoutineCreateRequest,
+        totalWorkoutCount: Int
+    ): RoutineTimingEstimate {
+        val firstWeekSeconds = estimateFirstWeekSeconds(request)
+        val expansionSeconds = estimateExpansionSeconds(totalWorkoutCount)
+        val generationWaves = (request.schedule.totalWeeks + MAX_PARALLEL_WEEK_GENERATION - 1) /
+            MAX_PARALLEL_WEEK_GENERATION
+        val multiWeekGenerationSeconds = (firstWeekSeconds * generationWaves * 135 + 99) / 100
+        return RoutineTimingEstimate(
+            firstWeekSeconds = firstWeekSeconds,
+            totalSeconds = (multiWeekGenerationSeconds + expansionSeconds).coerceAtLeast(firstWeekSeconds)
+        )
+    }
+
+    private fun estimateFirstWeekSeconds(request: RoutineCreateRequest): Int {
+        val activeDaySeconds = when (request.schedule.activeDays.size) {
+            1 -> 150
+            2 -> 180
+            3 -> 250
+            4 -> 240
+            5 -> 300
+            6 -> 340
+            else -> 390
+        }
+        val hourAdjustment = when {
+            request.schedule.hoursPerDay <= 1.0 -> 0
+            request.schedule.hoursPerDay <= 2.0 -> 15
+            request.schedule.hoursPerDay <= 3.0 -> 30
+            request.schedule.hoursPerDay <= 4.0 -> 45
+            else -> 60
+        }
+        val levelAdjustment = when (request.fitnessLevel) {
+            kdh.domain.routine.enum.FitnessLevel.BEGINNER -> 0
+            kdh.domain.routine.enum.FitnessLevel.INTERMEDIATE -> 15
+            kdh.domain.routine.enum.FitnessLevel.ADVANCED -> 30
+        }
+        val goalAdjustment = when (request.goal.goalType) {
+            kdh.domain.routine.enum.GoalType.HEALTH_CARE -> 0
+            kdh.domain.routine.enum.GoalType.DIET -> 10
+            kdh.domain.routine.enum.GoalType.MUSCLE_GAIN -> 15
+        }
+        return (activeDaySeconds + hourAdjustment + levelAdjustment + goalAdjustment).coerceIn(150, 480)
+    }
+
+    private fun estimateExpansionSeconds(totalWorkoutCount: Int): Int {
+        return (5 + totalWorkoutCount / 10).coerceIn(5, 25)
+    }
+
+    private fun estimateRemainingSeconds(
+        status: String,
+        phase: String,
+        createdCount: Int,
+        totalCount: Int,
+        elapsedSeconds: Int,
+        timingEstimate: RoutineTimingEstimate
+    ): Int {
+        if (status == "COMPLETED") {
+            return 0
+        }
+
+        if (phase == PHASE_PERSISTING_WEEKS) {
+            return estimateExpansionSeconds((totalCount - createdCount).coerceAtLeast(0))
+        }
+
+        return (timingEstimate.totalSeconds - elapsedSeconds).coerceAtLeast(0)
+    }
+
+    private data class RoutineTimingEstimate(
+        val firstWeekSeconds: Int,
+        val totalSeconds: Int
+    )
 }

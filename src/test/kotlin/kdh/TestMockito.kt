@@ -21,10 +21,16 @@ inline fun <reified T> captureValue(captor: ArgumentCaptor<T>): T {
     return dummyValue()
 }
 
+inline fun <reified T> eqValue(value: T): T {
+    Mockito.eq(value)
+    return value
+}
+
 @Suppress("UNCHECKED_CAST")
 inline fun <reified T> dummyValue(): T {
     val value: Any? = when (T::class) {
         String::class -> ""
+        Map::class -> emptyMap<String, String>()
         LocalDate::class -> LocalDate.MIN
         LocalDateTime::class -> LocalDateTime.MIN
         Routine::class -> Routine(user = User(provider = "mock", providerId = "mock", name = "mock"), totalWeeks = 1)

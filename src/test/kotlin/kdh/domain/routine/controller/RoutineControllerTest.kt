@@ -3,6 +3,7 @@ package kdh.domain.routine.controller
 import kdh.domain.routine.dto.ExerciseCompletionResponse
 import kdh.domain.routine.dto.RoutineAchievementRateResponse
 import kdh.domain.routine.dto.RoutineDateResponse
+import kdh.domain.routine.dto.RoutineDeleteResponse
 import kdh.domain.routine.service.RoutineService
 import kdh.global.oauth.CustomOAuth2User
 import org.assertj.core.api.Assertions.assertThat
@@ -51,6 +52,21 @@ class RoutineControllerTest {
         val response = controller.getMyRoutineDates(principal())
 
         assertThat(response.body).isEqualTo(expected)
+    }
+
+    @Test
+    fun `deleteFutureRoutines delegates authenticated owner to service`() {
+        val expected = RoutineDeleteResponse(
+            deletedRoutineCount = 1,
+            deletedDailyWorkoutCount = 28,
+            deletedWorkoutSectionCount = 28,
+            deletedExerciseCount = 224
+        )
+        Mockito.`when`(routineService.deleteFutureRoutines("kakao", "user-1")).thenReturn(expected)
+
+        val response = controller.deleteFutureRoutines(principal())
+
+        assertThat(response.body).isSameAs(expected)
     }
 
     @Test

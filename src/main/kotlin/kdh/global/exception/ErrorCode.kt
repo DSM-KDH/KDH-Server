@@ -14,5 +14,9 @@ enum class ErrorCode(
     INVALID_PROVIDER_TYPE(400, "Invalid Provider Type."),
     WORKOUT_API_EMPTY_RESPONSE(502, "Workout API 응답이 없습니다."),
     WORKOUT_API_FAILED(502, "Workout API 호출에 실패했습니다."),
-    ROUTINE_GENERATION_FAILED(500, "루틴 생성에 실패했습니다.")
+    ROUTINE_GENERATION_FAILED(500, "루틴 생성에 실패했습니다."),
+    INVALID_DIET_CONDITION(400, "루틴 생성이 불가능한 조건이에요. 다시 작성해주세요."),
+    REGENERATION_LIMIT_EXCEEDED(400, "루틴은 최대 1회만 재생성 가능합니다."),
+    ROUTINE_NOT_FOUND(400, "조회 가능한 루틴이 없습니다."),
+    INVALID_ROUTINE_RESULT(400, "생성된 루틴의 형식이 올바르지 않거나 한글이 지원되지 않습니다.")
 }

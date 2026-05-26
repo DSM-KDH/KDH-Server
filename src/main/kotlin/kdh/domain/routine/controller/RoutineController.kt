@@ -5,19 +5,25 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import kdh.domain.routine.dto.ExerciseCompletionResponse
 import kdh.domain.routine.dto.RoutineCreateRequest
+import kdh.domain.routine.dto.RoutineRegenerateRequest
 import kdh.domain.routine.dto.RoutineAchievementRateResponse
 import kdh.domain.routine.dto.RoutineDateResponse
+import kdh.domain.routine.dto.RoutineDeleteResponse
+import kdh.domain.routine.dto.WeeklyAchievementRateResponse
 import kdh.domain.routine.service.RoutineService
 import kdh.global.oauth.CustomOAuth2User
 import org.slf4j.LoggerFactory
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -161,16 +167,44 @@ class RoutineController(
         return ResponseEntity.ok(routineService.getMyRoutineDates(principal.provider, principal.providerId))
     }
 
+    @DeleteMapping
+    @Operation(
+        summary = "미래 루틴 삭제 요청",
+        description = "인증된 사용자의 미래 운동 일정(오늘 이후)이 포함된 루틴들을 일괄 삭제합니다.",
+        security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "미래 루틴 삭제 성공"),
+            ApiResponse(responseCode = "401", description = "JWT 인증 실패"),
+            ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없음")
+        ]
+    )
+    fun deleteFutureRoutines(
+        @Parameter(hidden = true)
+        @AuthenticationPrincipal principal: CustomOAuth2User
+    ): ResponseEntity<RoutineDeleteResponse> {
+        log.info("Future routine deletion requested. provider={}, providerId={}", principal.provider, principal.providerId)
+        return ResponseEntity.ok(routineService.deleteFutureRoutines(principal.provider, principal.providerId))
+    }
+
     @GetMapping("/achievement-rate/last-week")
     @Operation(
-        summary = "Last week's routine achievement rate",
-        description = "Returns the authenticated user's routine achievement rate for last Monday through Sunday.",
+        summary = "지난주 루틴 달성률 조회",
+        description = "지난주 월요일부터 일요일까지의 운동 완료율을 정산하여 반환합니다.",
         security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "지난주 달성률 조회 성공"),
+            ApiResponse(responseCode = "401", description = "JWT 인증 실패")
+        ]
     )
     fun getLastWeekAchievementRate(
         @Parameter(hidden = true)
         @AuthenticationPrincipal principal: CustomOAuth2User
     ): ResponseEntity<RoutineAchievementRateResponse> {
+        log.info("Last week achievement rate requested. provider={}, providerId={}", principal.provider, principal.providerId)
         return ResponseEntity.ok(
             routineService.getLastWeekAchievementRate(
                 principal.provider,
@@ -202,6 +236,68 @@ class RoutineController(
             routineService.updateExerciseCompletion(
                 exerciseId,
                 completed,
+                principal.provider,
+                principal.providerId
+            )
+        )
+    }
+
+    @PostMapping("/regenerate")
+    @Operation(
+        summary = "AI 루틴 재생성 요청",
+        description = """
+            기존에 생성되어 진행 중인 최신 루틴을 삭제하고 피드백을 반영하여 다시 생성합니다.
+            루틴은 최대 1회만 재생성 가능하며, 이 한도를 초과하면 에러를 반환합니다.
+        """,
+        security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "AI 루틴 재생성 요청 완료"),
+            ApiResponse(responseCode = "400", description = "재생성 한도(1회) 초과 또는 이전 생성 데이터 없음"),
+            ApiResponse(responseCode = "401", description = "JWT 인증 실패"),
+            ApiResponse(responseCode = "404", description = "최신 루틴 정보를 찾을 수 없음")
+        ]
+    )
+    fun regenerateRoutine(
+        @Valid @RequestBody request: RoutineRegenerateRequest,
+        @Parameter(hidden = true) @AuthenticationPrincipal principal: CustomOAuth2User
+    ): ResponseEntity<Void> {
+        log.info(
+            "Routine regeneration requested. provider={}, providerId={}, feedback={}, fcmToken={}",
+            principal.provider,
+            principal.providerId,
+            request.feedback,
+            request.fcmToken
+        )
+        routineService.regenerateRoutine(
+            feedback = request.feedback,
+            fcmToken = request.fcmToken,
+            provider = principal.provider,
+            providerId = principal.providerId
+        )
+        return ResponseEntity.ok().build()
+    }
+
+    @GetMapping("/achievement-rate/weeks")
+    @Operation(
+        summary = "주차별 루틴 달성률 목록 조회",
+        description = "현재 루틴의 전체 주차별 운동 달성률 목록을 리스트로 조회합니다.",
+        security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "주차별 달성률 목록 조회 성공"),
+            ApiResponse(responseCode = "401", description = "JWT 인증 실패"),
+            ApiResponse(responseCode = "404", description = "최신 루틴 정보를 찾을 수 없음")
+        ]
+    )
+    fun getWeeklyAchievementRates(
+        @Parameter(hidden = true) @AuthenticationPrincipal principal: CustomOAuth2User
+    ): ResponseEntity<List<WeeklyAchievementRateResponse>> {
+        log.info("Weekly achievement rates requested. provider={}, providerId={}", principal.provider, principal.providerId)
+        return ResponseEntity.ok(
+            routineService.getWeeklyAchievementRates(
                 principal.provider,
                 principal.providerId
             )

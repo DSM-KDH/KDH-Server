@@ -53,21 +53,36 @@ data class ExerciseCompletionResponse(
     val completed: Boolean
 )
 
-@Schema(description = "Last week's routine achievement rate response")
+@Schema(description = "삭제된 미래 루틴 요약 정보")
+data class RoutineDeleteResponse(
+    @field:Schema(description = "삭제된 루틴 개수", example = "1")
+    val deletedRoutineCount: Int,
+
+    @field:Schema(description = "삭제된 일자별 운동(일수) 개수", example = "28")
+    val deletedDailyWorkoutCount: Int,
+
+    @field:Schema(description = "삭제된 운동 섹션 개수", example = "28")
+    val deletedWorkoutSectionCount: Int,
+
+    @field:Schema(description = "삭제된 개별 운동 상세 개수", example = "224")
+    val deletedExerciseCount: Int
+)
+
+@Schema(description = "지난주 루틴 달성률 응답")
 data class RoutineAchievementRateResponse(
-    @field:Schema(description = "Start date of last week", example = "2026-04-27")
+    @field:Schema(description = "지난주 시작일", example = "2026-04-27")
     val startDate: LocalDate,
 
-    @field:Schema(description = "End date of last week", example = "2026-05-03")
+    @field:Schema(description = "지난주 종료일", example = "2026-05-03")
     val endDate: LocalDate,
 
-    @field:Schema(description = "Total exercise count in the period", example = "20")
+    @field:Schema(description = "기간 내 총 운동 개수", example = "20")
     val totalExerciseCount: Long,
 
-    @field:Schema(description = "Completed exercise count in the period", example = "15")
+    @field:Schema(description = "기간 내 완료한 운동 개수", example = "15")
     val completedExerciseCount: Long,
 
-    @field:Schema(description = "Achievement rate as a percentage", example = "75.0")
+    @field:Schema(description = "달성률 (%)", example = "75.0")
     val achievementRate: Double
 )
 
@@ -81,3 +96,27 @@ private fun WorkoutSection.normalizedName(): String {
         else -> cleanName
     }
 }
+
+@Schema(description = "주차별 루틴 달성률 응답")
+data class WeeklyAchievementRateResponse(
+    @field:Schema(description = "주차 번호", example = "1")
+    val weekNumber: Int,
+
+    @field:Schema(description = "주차 시작일", example = "2026-05-25")
+    val startDate: LocalDate,
+
+    @field:Schema(description = "주차 종료일", example = "2026-05-31")
+    val endDate: LocalDate,
+
+    @field:Schema(description = "해당 주차의 총 운동 개수", example = "9")
+    val totalExerciseCount: Long,
+
+    @field:Schema(description = "해당 주차의 완료한 운동 개수", example = "6")
+    val completedExerciseCount: Long,
+
+    @field:Schema(description = "달성률 (%)", example = "66.67")
+    val achievementRate: Double,
+
+    @field:Schema(description = "다음 루틴 시작까지 남은 일수", example = "5")
+    val daysUntilNextRoutine: Long? = null
+)

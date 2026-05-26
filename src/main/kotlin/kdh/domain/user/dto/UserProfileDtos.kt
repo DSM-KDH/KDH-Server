@@ -20,7 +20,16 @@ data class UserProfileUpdateRequest(
     val weightKg: Double,
 
     @field:Schema(description = "사용자 성별", example = "FEMALE")
-    val gender: Gender
+    val gender: Gender,
+
+    @field:Schema(description = "FCM 디바이스 토큰 (선택)", example = "sample-fcm-token", nullable = true)
+    val fcmToken: String? = null
+)
+
+@Schema(description = "사용자 서비스 이용 관련 상태 정보 응답")
+data class UserStatusResponse(
+    @field:Schema(description = "AI 루틴 생성 완료 여부")
+    val hasAiRoutine: Boolean
 )
 
 @Schema(description = "사용자 신체 정보 응답")

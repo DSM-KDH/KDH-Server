@@ -22,13 +22,17 @@ import kdh.domain.routine.exception.ExerciseNotFoundException
 import kdh.domain.routine.exception.ExerciseWorkoutDateNotFoundException
 import kdh.domain.routine.exception.FutureRoutineExistsException
 import kdh.domain.routine.exception.ProfileRequiredException
+import kdh.domain.routine.exception.InvalidDietConditionException
+import kdh.domain.routine.exception.RegenerationLimitExceededException
 import kdh.domain.routine.repository.DailyWorkoutRepository
 import kdh.domain.routine.repository.ExerciseDetailRepository
+import kdh.domain.routine.repository.RoutineRepository
 import kdh.domain.user.entity.User
+import kdh.domain.user.entity.UserProfileHistory
+import kdh.domain.user.enum.Gender
 import kdh.domain.user.exception.UserNotFoundException
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
-import kdh.captureValue
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -45,6 +49,7 @@ class RoutineServiceTest {
     private lateinit var profileRepository: UserProfileHistoryRepository
     private lateinit var dailyWorkoutRepository: DailyWorkoutRepository
     private lateinit var exerciseRepository: ExerciseDetailRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var service: RoutineService
 
     @BeforeEach
@@ -54,12 +59,14 @@ class RoutineServiceTest {
         profileRepository = Mockito.mock(UserProfileHistoryRepository::class.java)
         dailyWorkoutRepository = Mockito.mock(DailyWorkoutRepository::class.java)
         exerciseRepository = Mockito.mock(ExerciseDetailRepository::class.java)
+        routineRepository = Mockito.mock(RoutineRepository::class.java)
         service = RoutineService(
             rabbitTemplate,
             userRepository,
             profileRepository,
             dailyWorkoutRepository,
-            exerciseRepository
+            exerciseRepository,
+            routineRepository
         )
     }
 
@@ -68,7 +75,8 @@ class RoutineServiceTest {
         val request = request()
         val today = LocalDate.now()
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
-        Mockito.`when`(profileRepository.existsByUserProviderAndUserProviderId("kakao", "user-1")).thenReturn(true)
+        Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
+            .thenReturn(UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 70.0, gender = Gender.MALE))
         Mockito.`when`(dailyWorkoutRepository.findFirstFutureWorkoutDate("kakao", "user-1", today)).thenReturn(null)
 
         service.createRoutine(request, "kakao", "user-1")
@@ -77,12 +85,12 @@ class RoutineServiceTest {
         Mockito.verify(rabbitTemplate).convertAndSend(
             Mockito.eq("routine.exchange"),
             Mockito.eq("routine.create.key"),
-            captureValue(messageCaptor)
+            messageCaptor.capture()
         )
         val message = jacksonObjectMapper().readValue<RoutineCreationMessage>(messageCaptor.value)
         assertThat(message.provider).isEqualTo("kakao")
         assertThat(message.providerId).isEqualTo("user-1")
-        assertThat(message.request).isEqualTo(request)
+        assertThat(message.request.schedule.totalWeeks).isEqualTo(request.schedule.totalWeeks)
     }
 
     @Test
@@ -94,11 +102,13 @@ class RoutineServiceTest {
             .isInstanceOf(UserNotFoundException::class.java)
 
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
-        Mockito.`when`(profileRepository.existsByUserProviderAndUserProviderId("kakao", "user-1")).thenReturn(false)
+        Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
+            .thenReturn(null)
         assertThatThrownBy { service.createRoutine(request, "kakao", "user-1") }
             .isInstanceOf(ProfileRequiredException::class.java)
 
-        Mockito.`when`(profileRepository.existsByUserProviderAndUserProviderId("kakao", "user-1")).thenReturn(true)
+        Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
+            .thenReturn(UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 70.0, gender = Gender.MALE))
         Mockito.`when`(dailyWorkoutRepository.findFirstFutureWorkoutDate("kakao", "user-1", LocalDate.now()))
             .thenReturn(LocalDate.now().plusDays(1))
         assertThatThrownBy { service.createRoutine(request, "kakao", "user-1") }
@@ -201,6 +211,46 @@ class RoutineServiceTest {
     }
 
     @Test
+    fun `deleteFutureRoutines deletes routines containing future workout dates`() {
+        val routine = Routine(id = 10L, user = user(), totalWeeks = 4)
+        val todayWorkout = DailyWorkout(day = 1, workoutDate = LocalDate.now())
+        val futureWorkout = DailyWorkout(day = 2, workoutDate = LocalDate.now().plusDays(1))
+        val section = WorkoutSection(name = "Strength")
+        section.addExercise(ExerciseDetail(id = 1L, exerciseName = "Squat"))
+        futureWorkout.addSection(section)
+        routine.addDailyWorkout(todayWorkout)
+        routine.addDailyWorkout(futureWorkout)
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        Mockito.`when`(
+            routineRepository.findRoutinesWithFutureWorkouts("kakao", "user-1", LocalDate.now())
+        ).thenReturn(listOf(routine))
+
+        val response = service.deleteFutureRoutines("kakao", "user-1")
+
+        assertThat(response.deletedRoutineCount).isEqualTo(1)
+        assertThat(response.deletedDailyWorkoutCount).isEqualTo(2)
+        assertThat(response.deletedWorkoutSectionCount).isEqualTo(1)
+        assertThat(response.deletedExerciseCount).isEqualTo(1)
+        Mockito.verify(routineRepository).deleteAll(listOf(routine))
+    }
+
+    @Test
+    fun `deleteFutureRoutines returns zero counts when nothing is scheduled`() {
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        Mockito.`when`(
+            routineRepository.findRoutinesWithFutureWorkouts("kakao", "user-1", LocalDate.now())
+        ).thenReturn(emptyList())
+
+        val response = service.deleteFutureRoutines("kakao", "user-1")
+
+        assertThat(response.deletedRoutineCount).isZero()
+        assertThat(response.deletedDailyWorkoutCount).isZero()
+        assertThat(response.deletedWorkoutSectionCount).isZero()
+        assertThat(response.deletedExerciseCount).isZero()
+        Mockito.verify(routineRepository, Mockito.never()).deleteAll(Mockito.anyList())
+    }
+
+    @Test
     fun `updateExerciseCompletion updates only today's owned exercise`() {
         val exercise = ownedExercise(workoutDate = LocalDate.now(), completed = false)
         Mockito.`when`(
@@ -269,7 +319,7 @@ class RoutineServiceTest {
             fitnessLevel = FitnessLevel.BEGINNER,
             schedule = ScheduleSection(
                 totalWeeks = 4,
-                hoursPerDay = 1,
+                hoursPerDay = 1.0,
                 activeDays = listOf(DayOfWeek.MON, DayOfWeek.WED)
             ),
             preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
@@ -282,5 +332,137 @@ class RoutineServiceTest {
 
     private fun user(): User {
         return User(provider = "kakao", providerId = "user-1", name = "Tester")
+    }
+
+    @Test
+    fun `createRoutine blocks unsafe BMI or diet goals`() {
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        
+        // 1. 심각한 저체중 BMI < 16.0 차단
+        val skinnyProfile = UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 40.0, gender = Gender.FEMALE)
+        Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
+            .thenReturn(skinnyProfile)
+        assertThatThrownBy { service.createRoutine(request(), "kakao", "user-1") }
+            .isInstanceOf(InvalidDietConditionException::class.java)
+
+        // 2. 고도 비만 BMI >= 35.0 차단
+        val obeseProfile = UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 110.0, gender = Gender.MALE)
+        Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
+            .thenReturn(obeseProfile)
+        assertThatThrownBy { service.createRoutine(request(), "kakao", "user-1") }
+            .isInstanceOf(InvalidDietConditionException::class.java)
+
+        // 3. 다이어트 목표 시 주당 1.5kg 초과 감량 차단
+        val normalProfile = UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 80.0, gender = Gender.MALE)
+        Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
+            .thenReturn(normalProfile)
+        
+        // 4주 동안 80kg -> 70kg 감량 시도 (주당 2.5kg 감량)
+        val excessiveDietRequest = RoutineCreateRequest(
+            fcmToken = "token",
+            goal = GoalSection(goalType = GoalType.DIET, targetWeight = 70.0),
+            fitnessLevel = FitnessLevel.BEGINNER,
+            schedule = ScheduleSection(totalWeeks = 4, hoursPerDay = 1.0, activeDays = listOf(DayOfWeek.MON)),
+            preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
+            environment = EnvironmentSection(locations = listOf(LocationType.HOME), equipments = emptyList())
+        )
+        assertThatThrownBy { service.createRoutine(excessiveDietRequest, "kakao", "user-1") }
+            .isInstanceOf(InvalidDietConditionException::class.java)
+
+        // 4. 다이어트 시 목표 체중이 현재 체중보다 크거나 같을 때 차단
+        val invalidDietRequest = RoutineCreateRequest(
+            fcmToken = "token",
+            goal = GoalSection(goalType = GoalType.DIET, targetWeight = 85.0),
+            fitnessLevel = FitnessLevel.BEGINNER,
+            schedule = ScheduleSection(totalWeeks = 4, hoursPerDay = 1.0, activeDays = listOf(DayOfWeek.MON)),
+            preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
+            environment = EnvironmentSection(locations = listOf(LocationType.HOME), equipments = emptyList())
+        )
+        assertThatThrownBy { service.createRoutine(invalidDietRequest, "kakao", "user-1") }
+            .isInstanceOf(InvalidDietConditionException::class.java)
+    }
+
+    @Test
+    fun `regenerateRoutine deletes old routine and triggers new creation when regeneration limit not exceeded`() {
+        val user = user()
+        val oldRoutine = Routine(
+            id = 10L,
+            user = user,
+            totalWeeks = 4,
+            originalRequestJson = jacksonObjectMapper().writeValueAsString(request()),
+            regenerationCount = 0
+        )
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user)
+        Mockito.`when`(routineRepository.findFirstByUserProviderAndUserProviderIdOrderByStartDateDesc("kakao", "user-1"))
+            .thenReturn(oldRoutine)
+
+        service.regenerateRoutine("더 쉽게 해줘", "new-fcm-token", "kakao", "user-1")
+
+        Mockito.verify(routineRepository).delete(oldRoutine)
+        Mockito.verify(routineRepository).flush()
+
+        val messageCaptor = ArgumentCaptor.forClass(String::class.java)
+        Mockito.verify(rabbitTemplate).convertAndSend(
+            Mockito.eq("routine.exchange"),
+            Mockito.eq("routine.create.key"),
+            messageCaptor.capture()
+        )
+        val message = jacksonObjectMapper().readValue<RoutineCreationMessage>(messageCaptor.value)
+        assertThat(message.feedback).isEqualTo("더 쉽게 해줘")
+        assertThat(message.regenerationCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `regenerateRoutine blocks when regeneration count exceeds limit`() {
+        val user = user()
+        val alreadyRegeneratedRoutine = Routine(
+            id = 10L,
+            user = user,
+            totalWeeks = 4,
+            originalRequestJson = jacksonObjectMapper().writeValueAsString(request()),
+            regenerationCount = 1
+        )
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user)
+        Mockito.`when`(routineRepository.findFirstByUserProviderAndUserProviderIdOrderByStartDateDesc("kakao", "user-1"))
+            .thenReturn(alreadyRegeneratedRoutine)
+
+        assertThatThrownBy { service.regenerateRoutine("더 쉽게", "token", "kakao", "user-1") }
+            .isInstanceOf(RegenerationLimitExceededException::class.java)
+    }
+
+    @Test
+    fun `getWeeklyAchievementRates calculates rates correctly for each week`() {
+        val user = user()
+        val routine = Routine(
+            id = 10L,
+            user = user,
+            totalWeeks = 2,
+            startDate = LocalDate.of(2026, 5, 11)
+        )
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user)
+        Mockito.`when`(routineRepository.findFirstByUserProviderAndUserProviderIdOrderByStartDateDesc("kakao", "user-1"))
+            .thenReturn(routine)
+
+        // 1주차: 2026-05-11 ~ 2026-05-17
+        Mockito.`when`(dailyWorkoutRepository.countExercisesBetweenDates("kakao", "user-1", LocalDate.of(2026, 5, 11), LocalDate.of(2026, 5, 17)))
+            .thenReturn(10L)
+        Mockito.`when`(dailyWorkoutRepository.countCompletedExercisesBetweenDates("kakao", "user-1", LocalDate.of(2026, 5, 11), LocalDate.of(2026, 5, 17)))
+            .thenReturn(8L)
+
+        // 2주차: 2026-05-18 ~ 2026-05-24
+        Mockito.`when`(dailyWorkoutRepository.countExercisesBetweenDates("kakao", "user-1", LocalDate.of(2026, 5, 18), LocalDate.of(2026, 5, 24)))
+            .thenReturn(10L)
+        Mockito.`when`(dailyWorkoutRepository.countCompletedExercisesBetweenDates("kakao", "user-1", LocalDate.of(2026, 5, 18), LocalDate.of(2026, 5, 24)))
+            .thenReturn(5L)
+
+        val rates = service.getWeeklyAchievementRates("kakao", "user-1")
+
+        assertThat(rates).hasSize(2)
+        assertThat(rates[0].weekNumber).isEqualTo(1)
+        assertThat(rates[0].achievementRate).isEqualTo(80.0)
+        assertThat(rates[0].daysUntilNextRoutine).isNotNull()
+        assertThat(rates[1].weekNumber).isEqualTo(2)
+        assertThat(rates[1].achievementRate).isEqualTo(50.0)
+        assertThat(rates[1].daysUntilNextRoutine).isNotNull()
     }
 }

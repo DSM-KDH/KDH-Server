@@ -17,7 +17,7 @@ object RoutineTestFixtures {
             fcmToken = "fcm-token",
             goal = GoalSection(goalType = GoalType.HEALTH_CARE),
             fitnessLevel = FitnessLevel.BEGINNER,
-            schedule = ScheduleSection(totalWeeks = 4, hoursPerDay = 1, activeDays = listOf(DayOfWeek.MON)),
+            schedule = ScheduleSection(totalWeeks = 4, hoursPerDay = 1.0, activeDays = listOf(DayOfWeek.MON)),
             preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
             environment = EnvironmentSection(
                 locations = listOf(LocationType.HOME),

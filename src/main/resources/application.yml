@@ -66,6 +66,10 @@ external:
     workout:
       url: ${ROUTINE_API_URL}
 
+fcm:
+  server-key: ${FCM_SERVER_KEY:}
+  api-url: ${FCM_API_URL:https://fcm.googleapis.com/fcm/send}
+
 app:
   oauth:
     success-redirect-uri: ${APP_OAUTH_SUCCESS_REDIRECT_URI:kdhmobile://oauth2/callback}

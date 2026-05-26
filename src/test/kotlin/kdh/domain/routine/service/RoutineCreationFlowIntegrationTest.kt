@@ -81,17 +81,17 @@ class RoutineCreationFlowIntegrationTest @Autowired constructor(
         val request = request()
         val generatedWeek = listOf(
             workout(
-                warmUpExercise = "March in place",
-                strengthExercise = "Band squat",
-                cooldownExercise = "Hamstring stretch"
+                warmUpExercise = "제자리 걷기 March in place",
+                strengthExercise = "밴드 스쿼트 Band squat",
+                cooldownExercise = "스트레칭 Hamstring stretch"
             ),
             workout(
-                warmUpExercise = "Arm circles",
-                strengthExercise = "Wall push up",
-                cooldownExercise = "Calf stretch"
+                warmUpExercise = "팔 돌리기 Arm circles",
+                strengthExercise = "벽 푸시업 Wall push up",
+                cooldownExercise = "종아리 스트레칭 Calf stretch"
             )
         )
-        Mockito.`when`(workoutApiClient.generateSingleWeekRoutine(request, "kakao:user-1")).thenReturn(generatedWeek)
+        Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:user-1", null)).thenReturn(listOf(generatedWeek))
 
         routineService.createRoutine(request, "kakao", "user-1")
         val publishedMessage = capturePublishedMessage()
@@ -109,7 +109,7 @@ class RoutineCreationFlowIntegrationTest @Autowired constructor(
         assertThat(firstDetail.workouts).extracting<String> { it.sectionName }
             .containsExactly("Warm up", "Strength", "Cooldown")
         assertThat(firstDetail.workouts).extracting<String> { it.exerciseName }
-            .containsExactly("March in place", "Band squat", "Hamstring stretch")
+            .containsExactly("제자리 걷기 March in place", "밴드 스쿼트 Band squat", "스트레칭 Hamstring stretch")
         assertThat(firstDetail.workouts).extracting<String?> { it.repsTime }
             .containsExactly("5 min", "12 reps", "5 min")
         assertThat(firstDetail.workouts).allSatisfy { workout ->
@@ -119,8 +119,65 @@ class RoutineCreationFlowIntegrationTest @Autowired constructor(
 
         val secondDetail = routineService.getMyRoutineByDate(routineDates.last(), "kakao", "user-1")
         assertThat(secondDetail.workouts).extracting<String> { it.exerciseName }
-            .containsExactly("Arm circles", "Wall push up", "Calf stretch")
-        Mockito.verify(fcmService).sendNotification(Mockito.anyString(), Mockito.anyString())
+            .containsExactly("팔 돌리기 Arm circles", "벽 푸시업 Wall push up", "종아리 스트레칭 Calf stretch")
+        val progressCaptor = ArgumentCaptor.forClass(Map::class.java) as ArgumentCaptor<Map<String, String>>
+        Mockito.verify(fcmService, Mockito.times(4)).sendNotification(
+            Mockito.eq("fcm-token"),
+            Mockito.anyString(),
+            Mockito.anyString(),
+            captureValue(progressCaptor)
+        )
+        assertThat(progressCaptor.allValues.last())
+            .containsEntry("status", "COMPLETED")
+            .containsEntry("phase", "COMPLETED")
+            .containsEntry("createdCount", "2")
+            .containsEntry("totalCount", "2")
+            .containsEntry("progressPercent", "100")
+            .containsEntry("estimatedRemainingMinutes", "0")
+    }
+
+    @Test
+    fun `deleteFutureRoutines removes generated routine with future workouts`() {
+        val user = entityManager.persist(User(provider = "kakao", providerId = "delete-user", name = "Delete Tester"))
+        entityManager.persist(
+            UserProfileHistory(
+                user = user,
+                heightCm = 175.0,
+                weightKg = 70.0,
+                gender = Gender.MALE
+            )
+        )
+        flushAndClear()
+
+        val request = request()
+        val generatedWeek = listOf(
+            workout(
+                warmUpExercise = "제자리 걷기 March in place",
+                strengthExercise = "밴드 스쿼트 Band squat",
+                cooldownExercise = "스트레칭 Hamstring stretch"
+            ),
+            workout(
+                warmUpExercise = "팔 돌리기 Arm circles",
+                strengthExercise = "벽 푸시업 Wall push up",
+                cooldownExercise = "종아리 스트레칭 Calf stretch"
+            )
+        )
+        Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:delete-user", null)).thenReturn(listOf(generatedWeek))
+
+        routineService.createRoutine(request, "kakao", "delete-user")
+        routineMessageHandler.handleMessage(capturePublishedMessage())
+        flushAndClear()
+
+        assertThat(routineService.getMyRoutineDates("kakao", "delete-user")).hasSize(2)
+
+        val response = routineService.deleteFutureRoutines("kakao", "delete-user")
+        flushAndClear()
+
+        assertThat(response.deletedRoutineCount).isEqualTo(1)
+        assertThat(response.deletedDailyWorkoutCount).isEqualTo(2)
+        assertThat(response.deletedWorkoutSectionCount).isEqualTo(6)
+        assertThat(response.deletedExerciseCount).isEqualTo(6)
+        assertThat(routineService.getMyRoutineDates("kakao", "delete-user")).isEmpty()
     }
 
     private fun capturePublishedMessage(): String {
@@ -128,7 +185,7 @@ class RoutineCreationFlowIntegrationTest @Autowired constructor(
         Mockito.verify(rabbitTemplate).convertAndSend(
             Mockito.eq("routine.exchange"),
             Mockito.eq("routine.create.key"),
-            captureValue(messageCaptor)
+            messageCaptor.capture()
         )
         objectMapper.readTree(messageCaptor.value)
         return messageCaptor.value
@@ -141,7 +198,7 @@ class RoutineCreationFlowIntegrationTest @Autowired constructor(
             fitnessLevel = FitnessLevel.BEGINNER,
             schedule = ScheduleSection(
                 totalWeeks = 1,
-                hoursPerDay = 1,
+                hoursPerDay = 1.0,
                 activeDays = listOf(DayOfWeek.MON, DayOfWeek.WED)
             ),
             preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT, ExerciseType.STRENGTH),

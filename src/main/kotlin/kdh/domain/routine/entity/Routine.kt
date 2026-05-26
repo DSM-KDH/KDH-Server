@@ -18,6 +18,12 @@ class Routine(
 
     val startDate: LocalDate = LocalDate.now(),
 
+    @Column(columnDefinition = "TEXT")
+    var originalRequestJson: String? = null,
+
+    @Column(nullable = false)
+    var regenerationCount: Int = 0,
+
     // Routine에 속한 모든 일자별 운동들
     @OneToMany(mappedBy = "routine", cascade = [CascadeType.ALL], orphanRemoval = true)
     val dailyWorkouts: MutableList<DailyWorkout> = mutableListOf()

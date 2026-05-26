@@ -1,7 +1,9 @@
 package kdh.domain.user.service
 
+import kdh.domain.routine.repository.RoutineRepository
 import kdh.domain.user.dto.UserProfileResponse
 import kdh.domain.user.dto.UserProfileUpdateRequest
+import kdh.domain.user.dto.UserStatusResponse
 import kdh.domain.user.entity.UserProfileHistory
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
@@ -13,13 +15,19 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class UserProfileService(
     private val userRepository: UserRepository,
-    private val userProfileHistoryRepository: UserProfileHistoryRepository
+    private val userProfileHistoryRepository: UserProfileHistoryRepository,
+    private val routineRepository: RoutineRepository
 ) {
 
     @Transactional
     fun updateProfile(provider: String, providerId: String, request: UserProfileUpdateRequest): UserProfileResponse {
         val user = userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw UserNotFoundException(provider, providerId)
+
+        if (request.fcmToken != null && request.fcmToken != user.fcmToken) {
+            user.fcmToken = request.fcmToken
+            userRepository.save(user)
+        }
 
         val profile = userProfileHistoryRepository.save(
             UserProfileHistory(
@@ -52,5 +60,14 @@ class UserProfileService(
     @Transactional(readOnly = true)
     fun hasProfile(provider: String, providerId: String): Boolean {
         return userProfileHistoryRepository.existsByUserProviderAndUserProviderId(provider, providerId)
+    }
+
+    @Transactional(readOnly = true)
+    fun getUserStatus(provider: String, providerId: String): UserStatusResponse {
+        userRepository.findByProviderAndProviderId(provider, providerId)
+            ?: throw UserNotFoundException(provider, providerId)
+
+        val hasAiRoutine = routineRepository.existsByUserProviderAndUserProviderId(provider, providerId)
+        return UserStatusResponse(hasAiRoutine = hasAiRoutine)
     }
 }

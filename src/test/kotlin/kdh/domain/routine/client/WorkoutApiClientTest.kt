@@ -67,7 +67,34 @@ class WorkoutApiClientTest {
         assertThat(requestBodies.single().input.preferred_exercise_types).containsExactly("BODYWEIGHT", "STRENGTH")
         assertThat(requestBodies.single().input.locations).containsExactly("HOME")
         assertThat(requestBodies.single().input.equipments).containsExactly("BAND", "FOAM_ROLLER")
+        assertThat(requestBodies.single().input.extra_criteria).contains("generation_week=1")
         assertThat(requestBodies.single().config.configurable.thread_id).isNotBlank()
+    }
+
+    @Test
+    fun `generateMultiWeekRoutine requests every week independently`() {
+        val requestBodies = mutableListOf<WeeklyWorkoutApiRequest>()
+        server = HttpServer.create(InetSocketAddress(0), 0).apply {
+            createContext("/workout/invoke") { exchange ->
+                handleWorkoutRequest(exchange, requestBodies)
+            }
+            start()
+        }
+        val port = server!!.address.port
+        val client = WorkoutApiClient("http://localhost:$port")
+        client.init()
+
+        val workoutsByWeek = client.generateMultiWeekRoutine(request(activeDays = listOf(DayOfWeek.MON, DayOfWeek.WED)), userId = "kakao:user-1")
+
+        assertThat(workoutsByWeek).hasSize(3)
+        assertThat(workoutsByWeek).allSatisfy { workouts ->
+            assertThat(workouts).hasSize(2)
+        }
+        assertThat(requestBodies).hasSize(3)
+        assertThat(requestBodies.map { it.input.extra_criteria })
+            .anySatisfy { criteria -> assertThat(criteria).contains("generation_week=1") }
+            .anySatisfy { criteria -> assertThat(criteria).contains("generation_week=2") }
+            .anySatisfy { criteria -> assertThat(criteria).contains("generation_week=3") }
     }
 
     private fun handleWorkoutRequest(
@@ -118,7 +145,7 @@ class WorkoutApiClientTest {
             fcmToken = "fcm-token",
             goal = GoalSection(goalType = GoalType.HEALTH_CARE),
             fitnessLevel = FitnessLevel.BEGINNER,
-            schedule = ScheduleSection(totalWeeks = 3, hoursPerDay = 1, activeDays = activeDays),
+            schedule = ScheduleSection(totalWeeks = 3, hoursPerDay = 1.0, activeDays = activeDays),
             preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT, ExerciseType.STRENGTH),
             environment = EnvironmentSection(
                 locations = listOf(LocationType.HOME),

@@ -3,6 +3,8 @@ package kdh.domain.routine.dto
 import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
+import jakarta.validation.constraints.DecimalMax
+import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotEmpty
@@ -89,15 +91,15 @@ data class ScheduleSection(
     )
     val totalWeeks: Int,
 
-    @field:Min(1)
-    @field:Max(5)
+    @field:DecimalMin(value = "0.5", message = "하루 최소 운동 시간은 0.5시간(30분)입니다.")
+    @field:DecimalMax(value = "5.0", message = "하루 최대 운동 시간은 5.0시간입니다.")
     @field:Schema(
-        description = "하루 운동 목표 시간입니다. 단위는 시간입니다. 예를 들어 1이면 하루 1시간 루틴을 생성합니다.",
-        example = "1",
-        minimum = "1",
-        maximum = "5"
+        description = "하루 운동 목표 시간입니다. 단위는 시간입니다. 0.5단위로 지정 가능합니다. 예를 들어 1.5이면 하루 1시간 30분 루틴을 생성합니다.",
+        example = "1.5",
+        minimum = "0.5",
+        maximum = "5.0"
     )
-    val hoursPerDay: Int,
+    val hoursPerDay: Double,
 
     @field:NotEmpty(message = "운동 요일을 하나 이상 선택해주세요.")
     @field:ArraySchema(
@@ -122,13 +124,12 @@ data class EnvironmentSection(
     )
     val locations: List<LocationType>,
 
-    @field:NotEmpty(message = "사용 가능한 운동 기구를 하나 이상 선택해주세요.")
     @field:ArraySchema(
         schema = Schema(
-            description = "사용 가능한 운동 기구입니다. 선택한 기구를 기반으로 가능한 운동만 추천합니다.",
+            description = "사용 가능한 운동 기구입니다. 선택한 기구를 기반으로 가능한 운동만 추천합니다. 선택하지 않을 수 있습니다.",
             example = "BAND"
         ),
-        arraySchema = Schema(description = "사용 가능한 운동 기구 목록입니다.")
+        arraySchema = Schema(description = "사용 가능한 운동 기구 목록입니다. (선택사항)")
     )
-    val equipments: List<EquipmentType>
+    val equipments: List<EquipmentType> = emptyList()
 )

@@ -7,16 +7,23 @@ import kdh.domain.routine.dto.RoutineCreateRequest
 import kdh.domain.routine.dto.RoutineCreationMessage
 import kdh.domain.routine.dto.RoutineAchievementRateResponse
 import kdh.domain.routine.dto.RoutineDateResponse
+import kdh.domain.routine.dto.RoutineDeleteResponse
 import kdh.domain.routine.dto.RoutineWorkoutItemResponse
+import kdh.domain.routine.dto.WeeklyAchievementRateResponse
 import kdh.domain.routine.repository.DailyWorkoutRepository
 import kdh.domain.routine.repository.ExerciseDetailRepository
+import kdh.domain.routine.repository.RoutineRepository
 import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
+import kdh.domain.routine.enum.GoalType
 import kdh.domain.routine.exception.ExerciseCompletionDateInvalidException
 import kdh.domain.routine.exception.ExerciseNotFoundException
 import kdh.domain.routine.exception.ExerciseWorkoutDateNotFoundException
 import kdh.domain.routine.exception.FutureRoutineExistsException
+import kdh.domain.routine.exception.InvalidDietConditionException
 import kdh.domain.routine.exception.ProfileRequiredException
+import kdh.domain.routine.exception.RegenerationLimitExceededException
+import kdh.domain.routine.exception.RoutineNotFoundException
 import kdh.domain.user.exception.UserNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.amqp.rabbit.core.RabbitTemplate
@@ -32,7 +39,8 @@ class RoutineService(
     private val userRepository: UserRepository,
     private val userProfileHistoryRepository: UserProfileHistoryRepository,
     private val dailyWorkoutRepository: DailyWorkoutRepository,
-    private val exerciseDetailRepository: ExerciseDetailRepository
+    private val exerciseDetailRepository: ExerciseDetailRepository,
+    private val routineRepository: RoutineRepository
 ) {
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val log = LoggerFactory.getLogger(javaClass)
@@ -54,14 +62,48 @@ class RoutineService(
             request.environment.equipments
         )
 
-        userRepository.findByProviderAndProviderId(provider, providerId)
+        val user = userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw UserNotFoundException(provider, providerId)
         log.info("Routine creation owner validated. provider={}, providerId={}", provider, providerId)
 
-        if (!userProfileHistoryRepository.existsByUserProviderAndUserProviderId(provider, providerId)) {
-            throw ProfileRequiredException()
+        // FCM 토큰 업데이트
+        if (request.fcmToken != null && request.fcmToken != user.fcmToken) {
+            user.fcmToken = request.fcmToken
+            userRepository.save(user)
         }
+
+        val latestProfile = userProfileHistoryRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc(provider, providerId)
+            ?: throw ProfileRequiredException()
         log.info("Routine creation profile history validated. provider={}, providerId={}", provider, providerId)
+
+        // 1. 현재 운동 불가 몸 상태 검사 (현재 BMI가 16 미만 또는 35 이상인 경우)
+        val heightM = latestProfile.heightCm / 100.0
+        val currentBmi = latestProfile.weightKg / (heightM * heightM)
+        if (currentBmi < 16.0 || currentBmi >= 35.0) {
+            throw InvalidDietConditionException()
+        }
+
+        // 2. 다이어트 목적일 때 과다 감량 목표 검사
+        if (request.goal.goalType == GoalType.DIET) {
+            val targetWeight = request.goal.targetWeight ?: throw InvalidDietConditionException()
+            
+            // 목표 몸무게가 현재 몸무게보다 크거나 같으면 감량이 아니므로 불가
+            if (targetWeight >= latestProfile.weightKg) {
+                throw InvalidDietConditionException()
+            }
+            
+            // 주당 감량 속도 검사 (주당 1.5kg 초과 불가)
+            val lossPerWeek = (latestProfile.weightKg - targetWeight) / request.schedule.totalWeeks
+            if (lossPerWeek > 1.5) {
+                throw InvalidDietConditionException()
+            }
+            
+            // 목표 체중 도달 시 예상 BMI 검사 (목표 BMI 16 미만 불가)
+            val targetBmi = targetWeight / (heightM * heightM)
+            if (targetBmi < 16.0) {
+                throw InvalidDietConditionException()
+            }
+        }
 
         val today = LocalDate.now()
         val firstFutureWorkoutDate = dailyWorkoutRepository.findFirstFutureWorkoutDate(
@@ -77,6 +119,7 @@ class RoutineService(
                 today,
                 firstFutureWorkoutDate
             )
+
             throw FutureRoutineExistsException(firstFutureWorkoutDate)
         }
         log.info(
@@ -178,6 +221,43 @@ class RoutineService(
     }
 
     @Transactional
+    fun deleteFutureRoutines(provider: String, providerId: String): RoutineDeleteResponse {
+        userRepository.findByProviderAndProviderId(provider, providerId)
+            ?: throw UserNotFoundException(provider, providerId)
+
+        val today = LocalDate.now()
+        val routines = routineRepository.findRoutinesWithFutureWorkouts(provider, providerId, today)
+        val response = RoutineDeleteResponse(
+            deletedRoutineCount = routines.size,
+            deletedDailyWorkoutCount = routines.sumOf { it.dailyWorkouts.size },
+            deletedWorkoutSectionCount = routines.sumOf { routine -> routine.dailyWorkouts.sumOf { it.sections.size } },
+            deletedExerciseCount = routines.sumOf { routine ->
+                routine.dailyWorkouts.sumOf { dailyWorkout ->
+                    dailyWorkout.sections.sumOf { it.exercises.size }
+                }
+            }
+        )
+
+        if (routines.isNotEmpty()) {
+            routineRepository.deleteAll(routines)
+            log.info(
+                "Future routines deleted. provider={}, providerId={}, today={}, deletedRoutineCount={}, deletedDailyWorkoutCount={}, deletedWorkoutSectionCount={}, deletedExerciseCount={}",
+                provider,
+                providerId,
+                today,
+                response.deletedRoutineCount,
+                response.deletedDailyWorkoutCount,
+                response.deletedWorkoutSectionCount,
+                response.deletedExerciseCount
+            )
+        } else {
+            log.info("No future routines to delete. provider={}, providerId={}, today={}", provider, providerId, today)
+        }
+
+        return response
+    }
+
+    @Transactional
     fun updateExerciseCompletion(
         exerciseId: Long,
         completed: Boolean,
@@ -201,5 +281,99 @@ class RoutineService(
 
         exercise.completed = completed
         return ExerciseCompletionResponse(exerciseId = exercise.id, completed = exercise.completed)
+    }
+
+    @Transactional
+    fun regenerateRoutine(feedback: String?, fcmToken: String?, provider: String, providerId: String) {
+        val user = userRepository.findByProviderAndProviderId(provider, providerId)
+            ?: throw UserNotFoundException(provider, providerId)
+
+        // 최신 루틴을 조회한다.
+        val latestRoutine = routineRepository.findFirstByUserProviderAndUserProviderIdOrderByStartDateDesc(provider, providerId)
+            ?: throw RoutineNotFoundException()
+
+        if (latestRoutine.regenerationCount >= 1) {
+            throw RegenerationLimitExceededException()
+        }
+
+        val originalRequestJson = latestRoutine.originalRequestJson
+            ?: throw RoutineNotFoundException("이전 루틴 생성 조건 정보를 찾을 수 없어 재생성할 수 없습니다.")
+
+        val originalRequest = objectMapper.readValue(originalRequestJson, RoutineCreateRequest::class.java)
+
+        // 신규로 들어온 FCM 토큰이 있다면 반영 및 유저 테이블에도 업데이트
+        val targetFcmToken = fcmToken ?: originalRequest.fcmToken
+        if (targetFcmToken != null && targetFcmToken != user.fcmToken) {
+            user.fcmToken = targetFcmToken
+            userRepository.save(user)
+        }
+
+        val updatedRequest = originalRequest.copy(
+            fcmToken = targetFcmToken
+        )
+
+        // 기존 루틴을 하드 삭제한다.
+        routineRepository.delete(latestRoutine)
+        
+        // 영속성 컨텍스트를 플러시하여 충돌을 막음
+        routineRepository.flush()
+
+        // 새로운 루틴 생성을 큐에 등록한다. (재생성 횟수를 1 증가시킴)
+        val messagePayload = RoutineCreationMessage(
+            provider = provider,
+            providerId = providerId,
+            request = updatedRequest,
+            feedback = feedback,
+            regenerationCount = latestRoutine.regenerationCount + 1
+        )
+        val message = objectMapper.writeValueAsString(messagePayload)
+        rabbitTemplate.convertAndSend("routine.exchange", "routine.create.key", message)
+        log.info(
+            "Routine regeneration request published. provider={}, providerId={}, feedback={}, regenerationCount={}",
+            provider,
+            providerId,
+            feedback,
+            latestRoutine.regenerationCount + 1
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun getWeeklyAchievementRates(provider: String, providerId: String): List<WeeklyAchievementRateResponse> {
+        userRepository.findByProviderAndProviderId(provider, providerId)
+            ?: throw UserNotFoundException(provider, providerId)
+
+        val latestRoutine = routineRepository.findFirstByUserProviderAndUserProviderIdOrderByStartDateDesc(provider, providerId)
+            ?: throw RoutineNotFoundException()
+
+        val nextRoutineStartDate = latestRoutine.startDate.plusWeeks(latestRoutine.totalWeeks.toLong())
+        val daysUntilNextRoutine = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), nextRoutineStartDate).coerceAtLeast(0L)
+
+        return (1..latestRoutine.totalWeeks).map { week ->
+            val startDate = latestRoutine.startDate.plusWeeks((week - 1).toLong())
+            val endDate = startDate.plusDays(6)
+            val totalCount = dailyWorkoutRepository.countExercisesBetweenDates(
+                provider = provider,
+                providerId = providerId,
+                startDate = startDate,
+                endDate = endDate
+            )
+            val completedCount = dailyWorkoutRepository.countCompletedExercisesBetweenDates(
+                provider = provider,
+                providerId = providerId,
+                startDate = startDate,
+                endDate = endDate
+            )
+            val rate = if (totalCount == 0L) 0.0 else completedCount.toDouble() / totalCount.toDouble() * 100
+
+            WeeklyAchievementRateResponse(
+                weekNumber = week,
+                startDate = startDate,
+                endDate = endDate,
+                totalExerciseCount = totalCount,
+                completedExerciseCount = completedCount,
+                achievementRate = rate,
+                daysUntilNextRoutine = daysUntilNextRoutine
+            )
+        }
     }
 }

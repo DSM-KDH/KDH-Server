@@ -19,4 +19,7 @@ class User(
 
     @Column(name = "profile_image")
     var profileImage: String? = null,
+
+    @Column(name = "fcm_token")
+    var fcmToken: String? = null
 )
