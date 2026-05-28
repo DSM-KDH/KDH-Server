@@ -55,6 +55,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testRuntimeOnly("com.h2database:h2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    implementation("com.google.firebase:firebase-admin:9.3.0")
 }
 
 kotlin {

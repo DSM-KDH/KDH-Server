@@ -69,6 +69,7 @@ external:
 fcm:
   server-key: ${FCM_SERVER_KEY:}
   api-url: ${FCM_API_URL:https://fcm.googleapis.com/fcm/send}
+  key-file-path: ${FCM_KEY_FILE_PATH:kdh-fcm-firebase-adminsdk-fbsvc-4e41277336.json}
 
 app:
   oauth:

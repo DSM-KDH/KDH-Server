@@ -1,21 +1,41 @@
 package kdh.infra.fcm
 
+import com.google.auth.oauth2.GoogleCredentials
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.Message
+import com.google.firebase.messaging.Notification
+import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
-import org.springframework.web.reactive.function.client.WebClient
+import java.io.FileInputStream
+import java.io.IOException
 
 @Service
 class FcmService(
-    webClientBuilder: WebClient.Builder,
-    @Value("\${fcm.server-key:}") private val serverKey: String,
-    @Value("\${fcm.api-url:https://fcm.googleapis.com/fcm/send}") private val apiUrl: String
+    @Value("\${fcm.key-file-path}") private val keyFilePath: String
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val webClient = webClientBuilder.build()
-    private val effectiveApiUrl = apiUrl.ifBlank { DEFAULT_API_URL }
+
+    @PostConstruct
+    fun init() {
+        try {
+            if (FirebaseApp.getApps().isEmpty()) {
+                val serviceAccount = FileInputStream(keyFilePath)
+                val options = FirebaseOptions.builder()
+                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                    .build()
+                FirebaseApp.initializeApp(options)
+                log.info("Firebase Application has been initialized successfully using service account key: {}", keyFilePath)
+            } else {
+                log.info("Firebase Application already initialized.")
+            }
+        } catch (e: IOException) {
+            log.error("Failed to initialize Firebase Application. JSON Key file not found or invalid: {}", keyFilePath, e)
+        }
+    }
 
     fun sendNotification(title: String, body: String) {
         log.info("FCM notification skipped because target token is missing. title={}, body={}", title, body)
@@ -33,42 +53,23 @@ class FcmService(
             return
         }
 
-        if (serverKey.isBlank()) {
-            log.info(
-                "FCM notification skipped because FCM_SERVER_KEY is blank. tokenPresent={}, title={}, data={}",
-                true,
-                title,
-                data
-            )
-            return
-        }
+        try {
+            val message = Message.builder()
+                .setToken(targetToken)
+                .setNotification(
+                    Notification.builder()
+                        .setTitle(title)
+                        .setBody(body)
+                        .build()
+                )
+                .putAllData(data)
+                .build()
 
-        val payload = mapOf(
-            "to" to targetToken,
-            "notification" to mapOf(
-                "title" to title,
-                "body" to body
-            ),
-            "data" to data
-        )
-
-        runCatching {
-            webClient.post()
-                .uri(effectiveApiUrl)
-                .contentType(MediaType.APPLICATION_JSON)
-                .header(HttpHeaders.AUTHORIZATION, "key=$serverKey")
-                .bodyValue(payload)
-                .retrieve()
-                .bodyToMono(String::class.java)
-                .block()
-        }.onSuccess { response ->
-            log.info("FCM notification sent. title={}, response={}", title, response)
-        }.onFailure { e ->
+            val response = FirebaseMessaging.getInstance().send(message)
+            log.info("FCM notification sent. title={}, messageId={}", title, response)
+        } catch (e: Exception) {
             log.warn("FCM notification failed. title={}, reason={}", title, e.message, e)
         }
     }
-
-    companion object {
-        private const val DEFAULT_API_URL = "https://fcm.googleapis.com/fcm/send"
-    }
 }
+
