@@ -56,7 +56,8 @@ class SecurityConfig(
                         "/webjars/**",
                         "/favicon.ico",
                         "/oauth2/**",
-                        "/login/oauth2/**"
+                        "/login/oauth2/**",
+                        "/docs/fcm/**"
                     ).permitAll()
                     .anyRequest().authenticated()
             }
