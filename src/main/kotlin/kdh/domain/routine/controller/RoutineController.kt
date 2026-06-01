@@ -18,6 +18,7 @@ import kdh.domain.routine.dto.RoutineDateResponse
 import kdh.domain.routine.dto.RoutineDeleteResponse
 import kdh.domain.routine.dto.WeeklyAchievementRateResponse
 import kdh.domain.routine.service.RoutineService
+import kdh.global.dto.ErrorMessageResponse
 import kdh.global.oauth.CustomOAuth2User
 import org.slf4j.LoggerFactory
 import org.springframework.format.annotation.DateTimeFormat
@@ -52,6 +53,17 @@ class RoutineController(
             생성된 운동은 날짜별로 저장되며, 날짜별 상세 조회 API로 확인할 수 있습니다.
         """,
         security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "AI 루틴 생성 요청 성공 (비동기 생성 시작)"),
+            ApiResponse(
+                responseCode = "400",
+                description = "루틴 생성 조건 미달 (BMI 제한 혹은 무리한 감량 목표)",
+                content = [Content(schema = Schema(implementation = ErrorMessageResponse::class))]
+            ),
+            ApiResponse(responseCode = "401", description = "JWT 인증 실패")
+        ]
     )
     fun createRoutine(
         @Valid
@@ -118,6 +130,36 @@ class RoutineController(
             request.schedule.activeDays
         )
         routineService.createRoutine(request, principal.provider, principal.providerId)
+        return ResponseEntity.ok().build()
+    }
+
+    @PostMapping("/validate")
+    @Operation(
+        summary = "루틴 생성 조건 유효성 검사 API",
+        description = "실제 루틴을 생성하기 전에, 사용자의 현재 신체 상태(BMI)와 다이어트 목표 등이 루틴 생성 가능한 조건인지 사전에 검증합니다.",
+        security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "루틴 생성 가능 조건 충족"),
+            ApiResponse(
+                responseCode = "400",
+                description = "루틴 생성 조건 미달 (BMI 제한 혹은 무리한 감량 목표)",
+                content = [Content(schema = Schema(implementation = ErrorMessageResponse::class))]
+            ),
+            ApiResponse(responseCode = "401", description = "JWT 인증 실패")
+        ]
+    )
+    fun validateRoutineCondition(
+        @Valid @RequestBody request: RoutineCreateRequest,
+        @Parameter(hidden = true) @AuthenticationPrincipal principal: CustomOAuth2User
+    ): ResponseEntity<Void> {
+        log.info(
+            "Routine creation validation API requested. provider={}, providerId={}",
+            principal.provider,
+            principal.providerId
+        )
+        routineService.validateCreationConditionOnly(request, principal.provider, principal.providerId)
         return ResponseEntity.ok().build()
     }
 
@@ -254,7 +296,11 @@ class RoutineController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "200", description = "AI 루틴 재생성 요청 완료"),
-            ApiResponse(responseCode = "400", description = "재생성 한도(1회) 초과 또는 이전 생성 데이터 없음"),
+            ApiResponse(
+                responseCode = "400",
+                description = "재생성 한도(1회) 초과 또는 이전 생성 데이터 없음",
+                content = [Content(schema = Schema(implementation = ErrorMessageResponse::class))]
+            ),
             ApiResponse(responseCode = "401", description = "JWT 인증 실패"),
             ApiResponse(responseCode = "404", description = "최신 루틴 정보를 찾을 수 없음")
         ]

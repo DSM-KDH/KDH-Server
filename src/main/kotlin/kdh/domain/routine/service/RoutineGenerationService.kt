@@ -86,6 +86,7 @@ class RoutineGenerationService(
         val userId = "$provider:$providerId"
         var lastException: Exception? = null
         val maxAttempts = 3
+        val attemptsHistory = mutableListOf<Routine>()
 
         for (attempt in 1..maxAttempts) {
             try {
@@ -170,6 +171,12 @@ class RoutineGenerationService(
                     )
                 }
 
+                // 불완전한 운동명/수행횟수 누락 운동 사전 제거
+                filterInvalidExercises(routine)
+
+                // 3회 모두 실패할 경우 복구를 위해 필터링된 루틴 객체 보관
+                attemptsHistory.add(routine)
+
                 // AI 응답 검증 (한글 검증 및 정상 루틴 데이터 구조 검증)
                 validateRoutine(routine, targetWorkoutCount)
 
@@ -213,8 +220,37 @@ class RoutineGenerationService(
             }
         }
 
-        // 3회 실패 시 최종 오류 로그 및 예외 투척
-        log.error("Routine generation failed after {} attempts. provider={}, providerId={}", maxAttempts, provider, providerId)
+        // 3회 실패 시 최종 오류 로그 및 예외 투척 전 Fallback 복구 시도
+        log.warn("All {} routine generation attempts failed validation. Attempting fallback recovery. provider={}, providerId={}", maxAttempts, provider, providerId)
+        val bestRoutine = attemptsHistory.maxByOrNull { r ->
+            r.dailyWorkouts.flatMap { it.sections }.flatMap { it.exercises }.size
+        }
+
+        if (bestRoutine != null && bestRoutine.dailyWorkouts.flatMap { it.sections }.flatMap { it.exercises }.isNotEmpty()) {
+            val remainingExerciseCount = bestRoutine.dailyWorkouts.flatMap { it.sections }.flatMap { it.exercises }.size
+            log.info(
+                "Fallback recovery selected routine with {} remaining exercises. Saving routine by bypassing structural validation. provider={}, providerId={}",
+                remainingExerciseCount,
+                provider,
+                providerId
+            )
+            val savedRoutine = routineRepository.saveAndFlush(bestRoutine)
+
+            sendRoutineProgress(
+                token = request.fcmToken,
+                status = "COMPLETED",
+                phase = PHASE_COMPLETED,
+                createdCount = savedRoutine.dailyWorkouts.size,
+                totalCount = targetWorkoutCount,
+                timingEstimate = timingEstimate,
+                startedAtMillis = startedAt,
+                notificationTitle = "루틴 생성 완료!",
+                notificationBody = "${request.schedule.totalWeeks}주 동안의 맞춤 운동 루틴이 준비됐어요."
+            )
+            return
+        }
+
+        log.error("Routine generation failed after {} attempts and fallback recovery also failed. provider={}, providerId={}", maxAttempts, provider, providerId)
         throw lastException ?: InvalidRoutineGenerationResultException("AI 운동 계획 생성 및 검증에 모두 실패했습니다.")
     }
 
@@ -569,6 +605,27 @@ class RoutineGenerationService(
         }
 
         return (timingEstimate.totalSeconds - elapsedSeconds).coerceAtLeast(0)
+    }
+
+    private fun filterInvalidExercises(routine: Routine) {
+        val allowedRegex = Regex("""^[a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣\s!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]+$""")
+        val brokenOrJamoRegex = Regex("""\uFFFD|[ㄱ-ㅎ]{2,}|[ㅏ-ㅣ]{2,}""")
+
+        for (dw in routine.dailyWorkouts) {
+            for (sec in dw.sections) {
+                val validExercises = sec.exercises.filter { ex ->
+                    val name = ex.exerciseName.trim()
+                    if (name.isBlank() || name == "이름 없음" || name.length < 2) return@filter false
+                    if (!name.matches(allowedRegex)) return@filter false
+                    if (name.contains(brokenOrJamoRegex)) return@filter false
+                    val reps = ex.repsTime
+                    if (reps.isNullOrBlank() || reps.trim() == "값 없음") return@filter false
+                    true
+                }
+                sec.exercises.clear()
+                validExercises.forEach { sec.addExercise(it) }
+            }
+        }
     }
 
     private data class RoutineTimingEstimate(

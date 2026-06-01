@@ -18,5 +18,10 @@ enum class ErrorCode(
     INVALID_DIET_CONDITION(400, "루틴 생성이 불가능한 조건이에요. 다시 작성해주세요."),
     REGENERATION_LIMIT_EXCEEDED(400, "루틴은 최대 1회만 재생성 가능합니다."),
     ROUTINE_NOT_FOUND(400, "조회 가능한 루틴이 없습니다."),
-    INVALID_ROUTINE_RESULT(400, "생성된 루틴의 형식이 올바르지 않거나 한글이 지원되지 않습니다.")
+    INVALID_ROUTINE_RESULT(400, "생성된 루틴의 형식이 올바르지 않거나 한글이 지원되지 않습니다."),
+    BAD_REQUEST(400, "잘못된 요청입니다."),
+    VALIDATION_FAILED(400, "입력값 검증에 실패했습니다."),
+    INVALID_REQUEST_BODY(400, "요청 바디 형식이 올바르지 않습니다."),
+    INVALID_REQUEST_PARAMETER(400, "요청 파라미터 형식이 올바르지 않습니다."),
+    NOT_FOUND(404, "요청한 리소스를 찾을 수 없습니다.")
 }

@@ -255,9 +255,9 @@ class RoutineGenerationServiceTest {
     fun `generateMultiWeekRoutine throws InvalidRoutineGenerationResultException after 3 validation failures`() {
         val request = request(totalWeeks = 1, activeDays = listOf(DayOfWeek.MON))
         
-        // 3회차 모두 한글 없는 영문 응답
+        // 3회차 모두 운동명이 비어있어 필터링 후 0개가 됨 (Fallback 구제 불가)
         val invalidWeek = listOf(
-            listOf(workout("Warm up", "walk-1", "5 min"))
+            listOf(workout("Warm up", "", "5 min"))
         )
         
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
@@ -283,7 +283,7 @@ class RoutineGenerationServiceTest {
 
         assertThatThrownBy { service.generateMultiWeekRoutine(request, "kakao", "user-1") }
             .isInstanceOf(InvalidRoutineGenerationResultException::class.java)
-            .hasMessageContaining("허용되지 않은 문자")
+            .hasMessageContaining("비어있습니다")
     }
 
     @Test
@@ -297,7 +297,7 @@ class RoutineGenerationServiceTest {
 
         assertThatThrownBy { service.generateMultiWeekRoutine(request, "kakao", "user-1") }
             .isInstanceOf(InvalidRoutineGenerationResultException::class.java)
-            .hasMessageContaining("완성되지 않은 자모음 나열")
+            .hasMessageContaining("비어있습니다")
     }
 
     @Test
@@ -305,14 +305,14 @@ class RoutineGenerationServiceTest {
         // schedule = 2 days, but API returns 1 day
         val request = request(totalWeeks = 1, activeDays = listOf(DayOfWeek.MON, DayOfWeek.WED))
         val invalidWeek = listOf(
-            listOf(workout("Warm up", "걷기 운동", "5 min")) // 1 day only
+            listOf(workout("Warm up", "", "5 min")) // 운동명 비어있어 필터링 후 0개 됨
         )
         Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
         Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:user-1", null)).thenReturn(invalidWeek)
 
         assertThatThrownBy { service.generateMultiWeekRoutine(request, "kakao", "user-1") }
             .isInstanceOf(InvalidRoutineGenerationResultException::class.java)
-            .hasMessageContaining("목표 설정치")
+            .hasMessageContaining("비어있습니다")
     }
 
     @Test
@@ -326,7 +326,7 @@ class RoutineGenerationServiceTest {
 
         assertThatThrownBy { service.generateMultiWeekRoutine(request, "kakao", "user-1") }
             .isInstanceOf(InvalidRoutineGenerationResultException::class.java)
-            .hasMessageContaining("너무 짧은 운동명")
+            .hasMessageContaining("비어있습니다")
     }
 
     @Test
@@ -340,7 +340,83 @@ class RoutineGenerationServiceTest {
 
         assertThatThrownBy { service.generateMultiWeekRoutine(request, "kakao", "user-1") }
             .isInstanceOf(InvalidRoutineGenerationResultException::class.java)
-            .hasMessageContaining("수행 방법")
+            .hasMessageContaining("비어있습니다")
+    }
+
+    @Test
+    fun `generateMultiWeekRoutine filters out invalid exercises and saves valid ones when remaining exercises are non-empty`() {
+        val request = request(totalWeeks = 1, activeDays = listOf(DayOfWeek.MON))
+        val mixedWeek = listOf(
+            listOf(
+                mapOf(
+                    "Warm up" to listOf(
+                        mapOf("exercise_name" to "스쿼트", "reps_time" to "3세트 10회"),
+                        mapOf("exercise_name" to "스탠딩 토 태ップ", "reps_time" to "3세트 10회") // 가타카나 포함 (비정상)
+                    )
+                )
+            )
+        )
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        Mockito.`when`(routineRepository.saveAndFlush(anyValue())).thenAnswer { it.arguments[0] }
+        Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:user-1", null)).thenReturn(mixedWeek)
+
+        service.generateMultiWeekRoutine(request, "kakao", "user-1")
+
+        val routineCaptor = ArgumentCaptor.forClass(Routine::class.java)
+        Mockito.verify(routineRepository).saveAndFlush(captureValue(routineCaptor))
+        val savedRoutine = routineCaptor.value
+        val savedExercises = savedRoutine.dailyWorkouts.flatMap { it.sections }.flatMap { it.exercises }
+
+        // 비정상 운동인 '스탠딩 토 태ップ'은 제거되고 '스쿼트'만 남아서 저장되었어야 함
+        assertThat(savedExercises).hasSize(1)
+        assertThat(savedExercises.first().exerciseName).isEqualTo("스쿼트")
+    }
+
+    @Test
+    fun `generateMultiWeekRoutine falls back to the attempt with most remaining exercises when all attempts fail structural validation`() {
+        // activeDays = 2개로 설정 (총 2개의 운동 날짜가 생겨야 함)
+        val request = request(totalWeeks = 1, activeDays = listOf(DayOfWeek.MON, DayOfWeek.WED))
+
+        // 1회차: 운동이 0개 남음 (비정상 운동만 1개)
+        val attempt1 = listOf(
+            listOf(workout("Warm up", "스탠딩 토 태ップ", "5 min"))
+        )
+        // 2회차: 정상 운동 2개 남음 (단, 하루만 반환하여 일수 불합치로 validate 실패할 예정)
+        val attempt2 = listOf(
+            listOf(
+                mapOf(
+                    "Warm up" to listOf(
+                        mapOf("exercise_name" to "스쿼트 1", "reps_time" to "3세트"),
+                        mapOf("exercise_name" to "스쿼트 2", "reps_time" to "3세트")
+                    )
+                )
+            )
+        )
+        // 3회차: 정상 운동 1개 남음 (하루만 반환하여 validate 실패)
+        val attempt3 = listOf(
+            listOf(workout("Warm up", "스쿼트 3", "5 min"))
+        )
+
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        Mockito.`when`(routineRepository.saveAndFlush(anyValue())).thenAnswer { it.arguments[0] }
+        Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:user-1", null))
+            .thenReturn(attempt1)
+            .thenReturn(attempt2)
+            .thenReturn(attempt3)
+
+        service.generateMultiWeekRoutine(request, "kakao", "user-1")
+
+        // 3회 모두 API가 호출되었는지 검증
+        Mockito.verify(workoutApiClient, Mockito.times(3)).generateMultiWeekRoutine(request, "kakao:user-1", null)
+
+        // 구조적 검증이 모두 실패했으나, 2개 운동이 남은 2회차(attempt2) 루틴이 강제로 저장되었는지 검증
+        val routineCaptor = ArgumentCaptor.forClass(Routine::class.java)
+        Mockito.verify(routineRepository).saveAndFlush(captureValue(routineCaptor))
+        val savedRoutine = routineCaptor.value
+        val savedExercises = savedRoutine.dailyWorkouts.flatMap { it.sections }.flatMap { it.exercises }
+
+        assertThat(savedExercises).hasSize(2)
+        assertThat(savedExercises.map { it.exerciseName }).containsExactlyInAnyOrder("스쿼트 1", "스쿼트 2")
     }
 }
 

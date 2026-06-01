@@ -22,7 +22,9 @@ class GlobalExceptionHandlerTest {
         val response = handler.handleIllegalArgumentException(IllegalArgumentException("bad input"))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(response.body?.message).isEqualTo("bad input")
+        assertThat(response.body?.message).isEqualTo("잘못된 요청입니다.")
+        assertThat(response.body?.reason).isEqualTo("ILLEGAL_ARGUMENT")
+        assertThat(response.body?.description).isEqualTo("bad input")
     }
 
     @Test
@@ -42,7 +44,9 @@ class GlobalExceptionHandlerTest {
         val response = handler.handleMethodArgumentNotValidException(exception)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(response.body?.message).isEqualTo("name is required")
+        assertThat(response.body?.message).isEqualTo("입력값 검증에 실패했습니다.")
+        assertThat(response.body?.reason).isEqualTo("name")
+        assertThat(response.body?.description).isEqualTo("name is required")
     }
 
     @Test
@@ -56,7 +60,9 @@ class GlobalExceptionHandlerTest {
         val response = handler.handleHttpMessageNotReadableException(exception)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(response.body?.message).contains("missing fcmToken")
+        assertThat(response.body?.message).isEqualTo("요청 바디 형식이 올바르지 않습니다.")
+        assertThat(response.body?.reason).isEqualTo("HTTP_MESSAGE_NOT_READABLE")
+        assertThat(response.body?.description).contains("missing fcmToken")
     }
 
     @Test
@@ -76,7 +82,9 @@ class GlobalExceptionHandlerTest {
         val response = handler.handleMethodArgumentTypeMismatchException(exception)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(response.body?.message).isEqualTo("invalid date format. Use yyyy-MM-dd.")
+        assertThat(response.body?.message).isEqualTo("요청 파라미터 형식이 올바르지 않습니다.")
+        assertThat(response.body?.reason).isEqualTo("date")
+        assertThat(response.body?.description).isEqualTo("invalid date format. Use yyyy-MM-dd.")
     }
 
     @Test
@@ -86,7 +94,9 @@ class GlobalExceptionHandlerTest {
         val response = handler.handleNoResourceFoundException(exception)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat(response.body?.message).isEqualTo("not found")
+        assertThat(response.body?.message).isEqualTo("요청한 리소스를 찾을 수 없습니다.")
+        assertThat(response.body?.reason).isEqualTo("RESOURCE_NOT_FOUND")
+        assertThat(response.body?.description).isEqualTo("method=POST, path=oauth2/withdrawal")
     }
 
     @Test

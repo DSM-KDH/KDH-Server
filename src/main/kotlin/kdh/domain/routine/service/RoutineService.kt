@@ -76,34 +76,8 @@ class RoutineService(
             ?: throw ProfileRequiredException()
         log.info("Routine creation profile history validated. provider={}, providerId={}", provider, providerId)
 
-        // 1. 현재 운동 불가 몸 상태 검사 (현재 BMI가 16 미만 또는 35 이상인 경우)
-        val heightM = latestProfile.heightCm / 100.0
-        val currentBmi = latestProfile.weightKg / (heightM * heightM)
-        if (currentBmi < 16.0 || currentBmi >= 35.0) {
-            throw InvalidDietConditionException()
-        }
-
-        // 2. 다이어트 목적일 때 과다 감량 목표 검사
-        if (request.goal.goalType == GoalType.DIET) {
-            val targetWeight = request.goal.targetWeight ?: throw InvalidDietConditionException()
-            
-            // 목표 몸무게가 현재 몸무게보다 크거나 같으면 감량이 아니므로 불가
-            if (targetWeight >= latestProfile.weightKg) {
-                throw InvalidDietConditionException()
-            }
-            
-            // 주당 감량 속도 검사 (주당 1.5kg 초과 불가)
-            val lossPerWeek = (latestProfile.weightKg - targetWeight) / request.schedule.totalWeeks
-            if (lossPerWeek > 1.5) {
-                throw InvalidDietConditionException()
-            }
-            
-            // 목표 체중 도달 시 예상 BMI 검사 (목표 BMI 16 미만 불가)
-            val targetBmi = targetWeight / (heightM * heightM)
-            if (targetBmi < 16.0) {
-                throw InvalidDietConditionException()
-            }
-        }
+        // 신체 조건 및 다이어트 목표 유효성 검사 수행
+        validateRoutineCreationCondition(request, latestProfile)
 
         val today = LocalDate.now()
         val firstFutureWorkoutDate = dailyWorkoutRepository.findFirstFutureWorkoutDate(
@@ -374,6 +348,62 @@ class RoutineService(
                 achievementRate = rate,
                 daysUntilNextRoutine = daysUntilNextRoutine
             )
+        }
+    }
+
+    @Transactional(readOnly = true)
+    fun validateCreationConditionOnly(request: RoutineCreateRequest, provider: String, providerId: String) {
+        userRepository.findByProviderAndProviderId(provider, providerId)
+            ?: throw UserNotFoundException(provider, providerId)
+
+        val latestProfile = userProfileHistoryRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc(provider, providerId)
+            ?: throw ProfileRequiredException()
+
+        validateRoutineCreationCondition(request, latestProfile)
+    }
+
+    fun validateRoutineCreationCondition(
+        request: RoutineCreateRequest,
+        latestProfile: kdh.domain.user.entity.UserProfileHistory
+    ) {
+        val heightM = latestProfile.heightCm / 100.0
+        val currentBmi = latestProfile.weightKg / (heightM * heightM)
+        if (currentBmi < 16.0 || currentBmi >= 35.0) {
+            throw InvalidDietConditionException(
+                reason = "BMI_OUT_OF_RANGE",
+                description = "현재 BMI가 루틴 생성이 불가능한 범위입니다. (현재 BMI: ${String.format(java.util.Locale.US, "%.2f", currentBmi)}, 범위: 16 이상 35 미만)"
+            )
+        }
+
+        if (request.goal.goalType == GoalType.DIET) {
+            val targetWeight = request.goal.targetWeight 
+                ?: throw InvalidDietConditionException(
+                    reason = "TARGET_WEIGHT_REQUIRED",
+                    description = "다이어트 목표인 경우 목표 체중을 입력해야 합니다."
+                )
+
+            if (targetWeight >= latestProfile.weightKg) {
+                throw InvalidDietConditionException(
+                    reason = "TARGET_WEIGHT_HIGHER_THAN_CURRENT",
+                    description = "다이어트 목적의 목표 체중은 현재 체중보다 낮아야 합니다. (현재 체중: ${latestProfile.weightKg}kg, 목표 체중: ${targetWeight}kg)"
+                )
+            }
+
+            val lossPerWeek = (latestProfile.weightKg - targetWeight) / request.schedule.totalWeeks
+            if (lossPerWeek > 1.5) {
+                throw InvalidDietConditionException(
+                    reason = "WEEKLY_LOSS_LIMIT_EXCEEDED",
+                    description = "주당 감량 목표가 1.5kg을 초과할 수 없습니다. (설정된 주당 감량: ${String.format(java.util.Locale.US, "%.2f", lossPerWeek)}kg)"
+                )
+            }
+
+            val targetBmi = targetWeight / (heightM * heightM)
+            if (targetBmi < 16.0) {
+                throw InvalidDietConditionException(
+                    reason = "TARGET_BMI_OUT_OF_RANGE",
+                    description = "목표 체중 도달 시 예상 BMI가 16 미만이 될 수 없습니다. (예상 BMI: ${String.format(java.util.Locale.US, "%.2f", targetBmi)})"
+                )
+            }
         }
     }
 }

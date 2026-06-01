@@ -35,6 +35,7 @@ import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowableOfType
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
@@ -342,15 +343,25 @@ class RoutineServiceTest {
         val skinnyProfile = UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 40.0, gender = Gender.FEMALE)
         Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
             .thenReturn(skinnyProfile)
-        assertThatThrownBy { service.createRoutine(request(), "kakao", "user-1") }
-            .isInstanceOf(InvalidDietConditionException::class.java)
+        val ex1 = catchThrowableOfType(
+            { service.createRoutine(request(), "kakao", "user-1") },
+            InvalidDietConditionException::class.java
+        )
+        assertThat(ex1).isNotNull
+        assertThat(ex1.reason).isEqualTo("BMI_OUT_OF_RANGE")
+        assertThat(ex1.description).isEqualTo("현재 BMI가 루틴 생성이 불가능한 범위입니다. (현재 BMI: 13.06, 범위: 16 이상 35 미만)")
 
         // 2. 고도 비만 BMI >= 35.0 차단
         val obeseProfile = UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 110.0, gender = Gender.MALE)
         Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
             .thenReturn(obeseProfile)
-        assertThatThrownBy { service.createRoutine(request(), "kakao", "user-1") }
-            .isInstanceOf(InvalidDietConditionException::class.java)
+        val ex2 = catchThrowableOfType(
+            { service.createRoutine(request(), "kakao", "user-1") },
+            InvalidDietConditionException::class.java
+        )
+        assertThat(ex2).isNotNull
+        assertThat(ex2.reason).isEqualTo("BMI_OUT_OF_RANGE")
+        assertThat(ex2.description).isEqualTo("현재 BMI가 루틴 생성이 불가능한 범위입니다. (현재 BMI: 35.92, 범위: 16 이상 35 미만)")
 
         // 3. 다이어트 목표 시 주당 1.5kg 초과 감량 차단
         val normalProfile = UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 80.0, gender = Gender.MALE)
@@ -366,8 +377,13 @@ class RoutineServiceTest {
             preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
             environment = EnvironmentSection(locations = listOf(LocationType.HOME), equipments = emptyList())
         )
-        assertThatThrownBy { service.createRoutine(excessiveDietRequest, "kakao", "user-1") }
-            .isInstanceOf(InvalidDietConditionException::class.java)
+        val ex3 = catchThrowableOfType(
+            { service.createRoutine(excessiveDietRequest, "kakao", "user-1") },
+            InvalidDietConditionException::class.java
+        )
+        assertThat(ex3).isNotNull
+        assertThat(ex3.reason).isEqualTo("WEEKLY_LOSS_LIMIT_EXCEEDED")
+        assertThat(ex3.description).isEqualTo("주당 감량 목표가 1.5kg을 초과할 수 없습니다. (설정된 주당 감량: 2.50kg)")
 
         // 4. 다이어트 시 목표 체중이 현재 체중보다 크거나 같을 때 차단
         val invalidDietRequest = RoutineCreateRequest(
@@ -378,8 +394,32 @@ class RoutineServiceTest {
             preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
             environment = EnvironmentSection(locations = listOf(LocationType.HOME), equipments = emptyList())
         )
-        assertThatThrownBy { service.createRoutine(invalidDietRequest, "kakao", "user-1") }
-            .isInstanceOf(InvalidDietConditionException::class.java)
+        val ex4 = catchThrowableOfType(
+            { service.createRoutine(invalidDietRequest, "kakao", "user-1") },
+            InvalidDietConditionException::class.java
+        )
+        assertThat(ex4).isNotNull
+        assertThat(ex4.reason).isEqualTo("TARGET_WEIGHT_HIGHER_THAN_CURRENT")
+        assertThat(ex4.description).isEqualTo("다이어트 목적의 목표 체중은 현재 체중보다 낮아야 합니다. (현재 체중: 80.0kg, 목표 체중: 85.0kg)")
+
+        // 5. 다이어트 시 목표 체중 도달 시 예상 BMI < 16.0 차단
+        // 25주 동안 80kg -> 45kg 감량 (주당 감량 = 35 / 25 = 1.4kg)
+        // 예상 BMI = 45 / (1.75 * 1.75) = 14.69
+        val lowTargetBmiRequest = RoutineCreateRequest(
+            fcmToken = "token",
+            goal = GoalSection(goalType = GoalType.DIET, targetWeight = 45.0),
+            fitnessLevel = FitnessLevel.BEGINNER,
+            schedule = ScheduleSection(totalWeeks = 25, hoursPerDay = 1.0, activeDays = listOf(DayOfWeek.MON)),
+            preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
+            environment = EnvironmentSection(locations = listOf(LocationType.HOME), equipments = emptyList())
+        )
+        val ex5 = catchThrowableOfType(
+            { service.createRoutine(lowTargetBmiRequest, "kakao", "user-1") },
+            InvalidDietConditionException::class.java
+        )
+        assertThat(ex5).isNotNull
+        assertThat(ex5.reason).isEqualTo("TARGET_BMI_OUT_OF_RANGE")
+        assertThat(ex5.description).isEqualTo("목표 체중 도달 시 예상 BMI가 16 미만이 될 수 없습니다. (예상 BMI: 14.69)")
     }
 
     @Test

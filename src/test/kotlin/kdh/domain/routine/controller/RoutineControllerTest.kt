@@ -95,6 +95,16 @@ class RoutineControllerTest {
         assertThat(response.body).isSameAs(expected)
     }
 
+    @Test
+    fun `validateRoutineCondition delegates authenticated owner to service`() {
+        val request = RoutineTestFixtures.request()
+
+        val response = controller.validateRoutineCondition(request, principal())
+
+        assertThat(response.statusCode.value()).isEqualTo(200)
+        Mockito.verify(routineService).validateCreationConditionOnly(request, "kakao", "user-1")
+    }
+
     private fun principal(): CustomOAuth2User {
         return CustomOAuth2User(userName = "Tester", provider = "kakao", providerId = "user-1")
     }
