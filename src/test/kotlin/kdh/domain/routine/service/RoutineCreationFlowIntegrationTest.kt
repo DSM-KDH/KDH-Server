@@ -121,7 +121,7 @@ class RoutineCreationFlowIntegrationTest @Autowired constructor(
         assertThat(secondDetail.workouts).extracting<String> { it.exerciseName }
             .containsExactly("팔 돌리기 Arm circles", "벽 푸시업 Wall push up", "종아리 스트레칭 Calf stretch")
         val progressCaptor = ArgumentCaptor.forClass(Map::class.java) as ArgumentCaptor<Map<String, String>>
-        Mockito.verify(fcmService, Mockito.times(4)).sendNotification(
+        Mockito.verify(fcmService, Mockito.times(3)).sendNotification(
             Mockito.eq("fcm-token"),
             Mockito.anyString(),
             Mockito.anyString(),

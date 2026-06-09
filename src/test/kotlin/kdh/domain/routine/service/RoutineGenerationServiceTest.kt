@@ -78,7 +78,7 @@ class RoutineGenerationServiceTest {
                 assertThat(date.dayOfWeek).isIn(java.time.DayOfWeek.MONDAY, java.time.DayOfWeek.WEDNESDAY)
             }
         val progressCaptor = ArgumentCaptor.forClass(Map::class.java) as ArgumentCaptor<Map<String, String>>
-        Mockito.verify(fcmService, Mockito.times(7)).sendNotification(
+        Mockito.verify(fcmService, Mockito.times(6)).sendNotification(
             Mockito.eq("fcm-token"),
             Mockito.anyString(),
             Mockito.anyString(),
@@ -137,7 +137,7 @@ class RoutineGenerationServiceTest {
         assertThat(savedRoutine.dailyWorkouts[14].sections.first().exercises.first().exerciseName)
             .isEqualTo("한국어 운동 exercise-3-MON")
         val progressCaptor = ArgumentCaptor.forClass(Map::class.java) as ArgumentCaptor<Map<String, String>>
-        Mockito.verify(fcmService, Mockito.times(6)).sendNotification(
+        Mockito.verify(fcmService, Mockito.times(5)).sendNotification(
             Mockito.eq("fcm-token"),
             Mockito.anyString(),
             Mockito.anyString(),

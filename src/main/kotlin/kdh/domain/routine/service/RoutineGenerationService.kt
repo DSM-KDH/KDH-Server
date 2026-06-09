@@ -157,19 +157,21 @@ class RoutineGenerationService(
                         System.currentTimeMillis() - weekStartedAt
                     )
 
-                    // 매 주차가 생성될 때마다 완료도와 남은 분량 전송
-                    val progressPercent = calculateProgressPercent(routine.dailyWorkouts.size, targetWorkoutCount)
-                    sendRoutineProgress(
-                        token = request.fcmToken,
-                        status = "GENERATING",
-                        phase = PHASE_PERSISTING_WEEKS,
-                        createdCount = routine.dailyWorkouts.size,
-                        totalCount = targetWorkoutCount,
-                        timingEstimate = timingEstimate,
-                        startedAtMillis = startedAt,
-                        notificationTitle = "루틴 생성 중 ($progressPercent%)",
-                        notificationBody = "${week}주차 운동 계획이 준비되었어요. 전체 ${request.schedule.totalWeeks}주 중 ${week}주 완료!"
-                    )
+                    // 매 주차가 생성될 때마다 완료도와 남은 분량 전송 (마지막 주차는 최종 완료 시 전송)
+                    if (week < request.schedule.totalWeeks) {
+                        val progressPercent = calculateProgressPercent(routine.dailyWorkouts.size, targetWorkoutCount)
+                        sendRoutineProgress(
+                            token = request.fcmToken,
+                            status = "GENERATING",
+                            phase = PHASE_PERSISTING_WEEKS,
+                            createdCount = routine.dailyWorkouts.size,
+                            totalCount = targetWorkoutCount,
+                            timingEstimate = timingEstimate,
+                            startedAtMillis = startedAt,
+                            notificationTitle = "루틴 생성 중 ($progressPercent%)",
+                            notificationBody = "${week}주차 운동 계획이 준비되었어요. 전체 ${request.schedule.totalWeeks}주 중 ${week}주 완료!"
+                        )
+                    }
                 }
 
                 // 불완전한 운동명/수행횟수 누락 운동 사전 제거

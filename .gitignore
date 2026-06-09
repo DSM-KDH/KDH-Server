@@ -41,3 +41,8 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+# Test generated reports
+performance_test_result.txt
+progression_result.txt
+simulated_routine_result.txt
