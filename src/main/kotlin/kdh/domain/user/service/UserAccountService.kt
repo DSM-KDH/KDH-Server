@@ -28,11 +28,15 @@ class UserAccountService(
 
     @Transactional
     fun withdraw(provider: String, providerId: String) {
-        val user = userRepository.findByProviderAndProviderId(provider, providerId)
+        userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw UserNotFoundException(provider, providerId, "User not found: $provider/$providerId")
 
-        routineRepository.deleteByUserProviderAndUserProviderId(provider, providerId)
+        routineRepository.deleteExerciseDetailsByUser(provider, providerId)
+        routineRepository.deleteWorkoutSectionsByUser(provider, providerId)
+        routineRepository.deleteDailyWorkoutsByUser(provider, providerId)
+        routineRepository.deleteRoutinesByUser(provider, providerId)
+
         userProfileHistoryRepository.deleteByUserProviderAndUserProviderId(provider, providerId)
-        userRepository.delete(user)
+        userRepository.deleteByProviderAndProviderId(provider, providerId)
     }
 }

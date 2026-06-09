@@ -18,6 +18,8 @@ import kdh.domain.routine.enum.FitnessLevel
 import kdh.domain.routine.enum.GoalType
 import kdh.domain.routine.enum.LocationType
 import kdh.domain.routine.exception.ExerciseCompletionDateInvalidException
+import kdh.domain.routine.exception.ExerciseDeleteCompletedException
+import kdh.domain.routine.exception.ExerciseDeletePastDateException
 import kdh.domain.routine.exception.ExerciseNotFoundException
 import kdh.domain.routine.exception.ExerciseWorkoutDateNotFoundException
 import kdh.domain.routine.exception.FutureRoutineExistsException
@@ -302,6 +304,68 @@ class RoutineServiceTest {
             .isInstanceOf(ExerciseCompletionDateInvalidException::class.java)
     }
 
+    @Test
+    fun `deleteExercise deletes owned today or future exercise successfully`() {
+        val exercise = ownedExercise(workoutDate = LocalDate.now(), completed = false)
+        Mockito.`when`(
+            exerciseRepository.findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
+                1L,
+                "kakao",
+                "user-1"
+            )
+        ).thenReturn(exercise)
+
+        service.deleteExercise(1L, "kakao", "user-1")
+
+        Mockito.verify(exerciseRepository).delete(exercise)
+        assertThat(exercise.section?.exercises).doesNotContain(exercise)
+    }
+
+    @Test
+    fun `deleteExercise throws ExerciseNotFoundException when exercise is missing or not owned`() {
+        Mockito.`when`(
+            exerciseRepository.findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
+                99L,
+                "kakao",
+                "user-1"
+            )
+        ).thenReturn(null)
+
+        assertThatThrownBy { service.deleteExercise(99L, "kakao", "user-1") }
+            .isInstanceOf(ExerciseNotFoundException::class.java)
+    }
+
+    @Test
+    fun `deleteExercise throws ExerciseDeletePastDateException when exercise date is in the past`() {
+        val exercise = ownedExercise(workoutDate = LocalDate.now().minusDays(1), completed = false)
+        Mockito.`when`(
+            exerciseRepository.findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
+                1L,
+                "kakao",
+                "user-1"
+            )
+        ).thenReturn(exercise)
+
+        assertThatThrownBy { service.deleteExercise(1L, "kakao", "user-1") }
+            .isInstanceOf(ExerciseDeletePastDateException::class.java)
+    }
+
+    @Test
+    fun `deleteExercise throws ExerciseDeleteCompletedException when exercise is completed`() {
+        val exercise = ownedExercise(workoutDate = LocalDate.now(), completed = true)
+        Mockito.`when`(
+            exerciseRepository.findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
+                1L,
+                "kakao",
+                "user-1"
+            )
+        ).thenReturn(exercise)
+
+        assertThatThrownBy { service.deleteExercise(1L, "kakao", "user-1") }
+            .isInstanceOf(ExerciseDeleteCompletedException::class.java)
+    }
+
+
     private fun ownedExercise(workoutDate: LocalDate?, completed: Boolean = false): ExerciseDetail {
         val routine = Routine(user = user(), totalWeeks = 1)
         val dailyWorkout = DailyWorkout(day = 1, workoutDate = workoutDate)
@@ -420,6 +484,37 @@ class RoutineServiceTest {
         assertThat(ex5).isNotNull
         assertThat(ex5.reason).isEqualTo("TARGET_BMI_OUT_OF_RANGE")
         assertThat(ex5.description).isEqualTo("목표 체중 도달 시 예상 BMI가 16 미만이 될 수 없습니다. (예상 BMI: 14.69)")
+    }
+
+    @Test
+    fun `createRoutine aggregates multiple diet condition failures`() {
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        
+        val skinnyProfile = UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 40.0, gender = Gender.FEMALE)
+        Mockito.`when`(profileRepository.findFirstByUserProviderAndUserProviderIdOrderByRecordedAtDesc("kakao", "user-1"))
+            .thenReturn(skinnyProfile)
+
+        val request = RoutineCreateRequest(
+            fcmToken = "token",
+            goal = GoalSection(goalType = GoalType.DIET, targetWeight = 45.0),
+            fitnessLevel = FitnessLevel.BEGINNER,
+            schedule = ScheduleSection(totalWeeks = 4, hoursPerDay = 1.0, activeDays = listOf(DayOfWeek.MON)),
+            preferredExerciseTypes = listOf(ExerciseType.BODYWEIGHT),
+            environment = EnvironmentSection(locations = listOf(LocationType.HOME), equipments = emptyList())
+        )
+
+        val ex = catchThrowableOfType(
+            { service.createRoutine(request, "kakao", "user-1") },
+            InvalidDietConditionException::class.java
+        )
+
+        assertThat(ex).isNotNull
+        assertThat(ex.reason).contains("BMI_OUT_OF_RANGE", "TARGET_WEIGHT_HIGHER_THAN_CURRENT", "TARGET_BMI_OUT_OF_RANGE")
+        assertThat(ex.description).contains(
+            "현재 BMI가 루틴 생성이 불가능한 범위입니다.",
+            "다이어트 목적의 목표 체중은 현재 체중보다 낮아야 합니다.",
+            "목표 체중 도달 시 예상 BMI가 16 미만이 될 수 없습니다."
+        )
     }
 
     @Test

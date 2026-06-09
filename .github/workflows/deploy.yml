@@ -66,6 +66,7 @@ jobs:
             # 5. --env-file 옵션으로 .env 파일 전체 적용해서 실행
             docker run -d -p 127.0.0.1:8080:8080 --name my-spring-app \
               --add-host=host.docker.internal:host-gateway \
+              -v /opt/kdh:/opt/kdh:ro \
               --env-file .env \
               ${{ secrets.DOCKER_USERNAME }}/my-spring-app:kdh
             

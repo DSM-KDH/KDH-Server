@@ -66,6 +66,30 @@ class UserAccountServiceIntegrationTest @Autowired constructor(
     }
 
     @Test
+    fun `withdraw deletes account and profiles when user has zero routines`() {
+        val user = entityManager.persist(User(provider = "kakao", providerId = "user-no-routines", name = "NoRoutines"))
+        entityManager.persist(
+            UserProfileHistory(
+                user = user,
+                heightCm = 180.0,
+                weightKg = 75.0,
+                gender = Gender.MALE
+            )
+        )
+        flushAndClear()
+
+        service.withdraw("kakao", "user-no-routines")
+        flushAndClear()
+
+        assertThat(userRepository.findByProviderAndProviderId("kakao", "user-no-routines")).isNull()
+        assertThat(profileRepository.count()).isZero()
+        assertThat(routineRepository.count()).isZero()
+        assertThat(countEntities(DailyWorkout::class.java)).isZero()
+        assertThat(countEntities(WorkoutSection::class.java)).isZero()
+        assertThat(countEntities(ExerciseDetail::class.java)).isZero()
+    }
+
+    @Test
     fun `withdraw deletes many owned routines and profiles without deleting another user data`() {
         val targetUser = entityManager.persist(User(provider = "kakao", providerId = "heavy-user", name = "Heavy"))
         val otherUser = entityManager.persist(User(provider = "kakao", providerId = "other-user", name = "Other"))

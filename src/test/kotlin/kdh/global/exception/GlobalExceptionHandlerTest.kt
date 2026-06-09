@@ -46,7 +46,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
         assertThat(response.body?.message).isEqualTo("입력값 검증에 실패했습니다.")
         assertThat(response.body?.reason).isEqualTo("name")
-        assertThat(response.body?.description).isEqualTo("name is required")
+        assertThat(response.body?.description).isEqualTo("name: name is required")
     }
 
     @Test

@@ -19,6 +19,8 @@ enum class ErrorCode(
     REGENERATION_LIMIT_EXCEEDED(400, "루틴은 최대 1회만 재생성 가능합니다."),
     ROUTINE_NOT_FOUND(400, "조회 가능한 루틴이 없습니다."),
     INVALID_ROUTINE_RESULT(400, "생성된 루틴의 형식이 올바르지 않거나 한글이 지원되지 않습니다."),
+    EXERCISE_DELETE_PAST_DATE(400, "오늘 해야 하는 종목이 아닌 과거에 했어야 했던 종목은 삭제할 수 없습니다."),
+    EXERCISE_DELETE_COMPLETED(400, "완료한 종목은 삭제할 수 없습니다."),
     BAD_REQUEST(400, "잘못된 요청입니다."),
     VALIDATION_FAILED(400, "입력값 검증에 실패했습니다."),
     INVALID_REQUEST_BODY(400, "요청 바디 형식이 올바르지 않습니다."),

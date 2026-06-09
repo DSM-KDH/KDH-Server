@@ -53,9 +53,12 @@ class UserAccountServiceTest {
         service.withdraw("kakao", "user-1")
 
         val inOrder = Mockito.inOrder(routineRepository, profileRepository, userRepository)
-        inOrder.verify(routineRepository).deleteByUserProviderAndUserProviderId("kakao", "user-1")
+        inOrder.verify(routineRepository).deleteExerciseDetailsByUser("kakao", "user-1")
+        inOrder.verify(routineRepository).deleteWorkoutSectionsByUser("kakao", "user-1")
+        inOrder.verify(routineRepository).deleteDailyWorkoutsByUser("kakao", "user-1")
+        inOrder.verify(routineRepository).deleteRoutinesByUser("kakao", "user-1")
         inOrder.verify(profileRepository).deleteByUserProviderAndUserProviderId("kakao", "user-1")
-        inOrder.verify(userRepository).delete(user)
+        inOrder.verify(userRepository).deleteByProviderAndProviderId("kakao", "user-1")
     }
 
     @Test
@@ -65,8 +68,11 @@ class UserAccountServiceTest {
         assertThatThrownBy { service.withdraw("kakao", "missing") }
             .isInstanceOf(KdhException::class.java)
 
-        Mockito.verify(routineRepository, Mockito.never()).deleteByUserProviderAndUserProviderId(Mockito.anyString(), Mockito.anyString())
+        Mockito.verify(routineRepository, Mockito.never()).deleteExerciseDetailsByUser(Mockito.anyString(), Mockito.anyString())
+        Mockito.verify(routineRepository, Mockito.never()).deleteWorkoutSectionsByUser(Mockito.anyString(), Mockito.anyString())
+        Mockito.verify(routineRepository, Mockito.never()).deleteDailyWorkoutsByUser(Mockito.anyString(), Mockito.anyString())
+        Mockito.verify(routineRepository, Mockito.never()).deleteRoutinesByUser(Mockito.anyString(), Mockito.anyString())
         Mockito.verify(profileRepository, Mockito.never()).deleteByUserProviderAndUserProviderId(Mockito.anyString(), Mockito.anyString())
-        Mockito.verify(userRepository, Mockito.never()).delete(Mockito.any())
+        Mockito.verify(userRepository, Mockito.never()).deleteByProviderAndProviderId(Mockito.anyString(), Mockito.anyString())
     }
 }

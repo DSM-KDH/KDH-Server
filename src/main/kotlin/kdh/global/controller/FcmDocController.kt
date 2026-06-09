@@ -6,12 +6,15 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import kdh.domain.routine.dto.RoutineDateResponse
+import kdh.domain.routine.dto.RoutineWorkoutItemResponse
 import kdh.infra.fcm.FcmService
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 
 @RestController
 @RequestMapping("/docs/fcm")
@@ -243,6 +246,93 @@ class FcmDocController(
             )
         )
     }
+
+    @PostMapping("/test/routine-completed")
+    @Operation(
+        summary = "FCM 실전 테스트: 루틴 생성 완료 알림 및 더미 데이터 반환",
+        description = """
+            ### 🔓 [로그인 미필수 API - 자물쇠 해제]
+            본 테스트 API는 로그인 인증 헤더(JWT Bearer)가 없어도 누구나 자유롭게 호출할 수 있습니다.
+            
+            ### ⚙️ [내부 동작 설명]
+            1. 입력받은 FCM 토큰으로 실제 루틴 생성 완료 알림과 동일한 페이로드(COMPLETED 상태 및 완료 데이터 맵 포함)의 푸시 알림을 즉시 발송합니다.
+            2. 응답 본문으로 실제 루틴 생성이 완료되어 조회가 가능해졌을 때 클라이언트가 받아볼 수 있는 형태의 **1주차(3일 치) 루틴 더미 데이터**를 구성하여 즉시 반환합니다.
+            3. 이를 통해 비동기 MQ 대기 없이 클라이언트 측의 푸시 알림 수신과 루틴 상세 화면 렌더링 연동을 안정적으로 테스트할 수 있습니다.
+        """,
+        security = [] // 로그인 토큰 요구 제외 (Swagger 자물쇠 풀림)
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "FCM 푸시 알림 발송 및 더미 데이터 반환 성공",
+                content = [Content(schema = Schema(implementation = FcmRoutineCompletedTestResponse::class))]
+            )
+        ]
+    )
+    fun testRoutineCompleted(
+        @RequestBody request: FcmTestRoutineCompletedRequest
+    ): ResponseEntity<FcmRoutineCompletedTestResponse> {
+        val title = "루틴 생성 완료!"
+        val body = "${request.totalWeeks}주 동안의 맞춤 운동 루틴이 준비됐어요."
+        
+        val totalCount = request.totalWeeks * 3
+        val data = mapOf(
+            "type" to "ROUTINE_GENERATION",
+            "status" to "COMPLETED",
+            "phase" to "COMPLETED",
+            "createdCount" to totalCount.toString(),
+            "totalCount" to totalCount.toString(),
+            "progressPercent" to "100",
+            "estimatedFirstWeekMinutes" to "5",
+            "estimatedFirstWeekRemainingMinutes" to "0",
+            "estimatedTotalMinutes" to "8",
+            "estimatedRemainingMinutes" to "0",
+            "completed" to "true"
+        )
+
+        fcmService.sendNotification(request.fcmToken, title, body, data)
+
+        // 1주차 3일치 더미 데이터 조립
+        val date1 = request.startDate
+        val date2 = request.startDate.plusDays(2)
+        val date3 = request.startDate.plusDays(4)
+
+        val dummyRoutine = listOf(
+            RoutineDateResponse(
+                date = date1,
+                workouts = listOf(
+                    RoutineWorkoutItemResponse(exerciseId = 101, sectionName = "Warm up", exerciseName = "제자리 걷기 March in place", repsTime = "5 min", completed = false),
+                    RoutineWorkoutItemResponse(exerciseId = 102, sectionName = "Strength", exerciseName = "밴드 스쿼트 Band squat", repsTime = "12 reps", completed = false),
+                    RoutineWorkoutItemResponse(exerciseId = 103, sectionName = "Cooldown", exerciseName = "스트레칭 Hamstring stretch", repsTime = "5 min", completed = false)
+                )
+            ),
+            RoutineDateResponse(
+                date = date2,
+                workouts = listOf(
+                    RoutineWorkoutItemResponse(exerciseId = 201, sectionName = "Warm up", exerciseName = "팔 돌리기 Arm circles", repsTime = "5 min", completed = false),
+                    RoutineWorkoutItemResponse(exerciseId = 202, sectionName = "Strength", exerciseName = "벽 푸시업 Wall push up", repsTime = "12 reps", completed = false),
+                    RoutineWorkoutItemResponse(exerciseId = 203, sectionName = "Cooldown", exerciseName = "종아리 스트레칭 Calf stretch", repsTime = "5 min", completed = false)
+                )
+            ),
+            RoutineDateResponse(
+                date = date3,
+                workouts = listOf(
+                    RoutineWorkoutItemResponse(exerciseId = 301, sectionName = "Warm up", exerciseName = "가벼운 조깅 Light jogging", repsTime = "10 min", completed = false),
+                    RoutineWorkoutItemResponse(exerciseId = 302, sectionName = "Strength", exerciseName = "덤벨 숄더 프레스 Dumbbell shoulder press", repsTime = "10 reps", completed = false),
+                    RoutineWorkoutItemResponse(exerciseId = 303, sectionName = "Cooldown", exerciseName = "전신 스트레칭 Full body stretch", repsTime = "5 min", completed = false)
+                )
+            )
+        )
+
+        return ResponseEntity.ok(
+            FcmRoutineCompletedTestResponse(
+                fcmStatus = "SUCCESS",
+                fcmMessage = "[$title] FCM 푸시 전송 성공! (수신 기기의 트레이 및 앱 내 data 로그를 확인해 주세요)",
+                dummyRoutine = dummyRoutine
+            )
+        )
+    }
 }
 
 // ==========================================
@@ -304,4 +394,28 @@ data class FcmTestWeeklyAchievementRequest(
 data class FcmTestProfileReminderRequest(
     @field:Schema(description = "수신처 FCM 디바이스 토큰", example = "your-device-fcm-token")
     val fcmToken: String
+)
+
+@Schema(description = "루틴 생성 완료 알림 및 더미 데이터 테스트 요청")
+data class FcmTestRoutineCompletedRequest(
+    @field:Schema(description = "수신처 FCM 디바이스 토큰", example = "your-device-fcm-token")
+    val fcmToken: String,
+    
+    @field:Schema(description = "목표 전체 주차 수 (기본값 4)", example = "4")
+    val totalWeeks: Int = 4,
+
+    @field:Schema(description = "더미 데이터 기준 시작 날짜 (기본값 오늘)", example = "2026-06-08")
+    val startDate: LocalDate = LocalDate.now()
+)
+
+@Schema(description = "루틴 생성 완료 테스트 및 더미 데이터 응답")
+data class FcmRoutineCompletedTestResponse(
+    @field:Schema(description = "FCM 전송 결과 상태", example = "SUCCESS")
+    val fcmStatus: String,
+    
+    @field:Schema(description = "FCM 결과 상세 메시지", example = "[루틴 생성 완료!] FCM 푸시 전송 성공!")
+    val fcmMessage: String,
+
+    @field:Schema(description = "완료된 것으로 가정하여 생성된 더미 루틴 데이터 목록 (1주차 분량)")
+    val dummyRoutine: List<RoutineDateResponse>
 )

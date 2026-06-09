@@ -284,6 +284,46 @@ class RoutineController(
         )
     }
 
+    @DeleteMapping("/exercises/{exerciseId}")
+    @Operation(
+        summary = "운동 종목 삭제",
+        description = """
+            루틴에 속한 개별 운동 종목을 삭제합니다.
+
+            오늘 해야 하는 종목 또는 미래에 예정된 종목만 삭제할 수 있습니다.
+            과거에 했어야 했던 종목이나 이미 완료한 종목은 삭제할 수 없습니다.
+        """,
+        security = [SecurityRequirement(name = "Bearer Authentication")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "운동 종목 삭제 성공"),
+            ApiResponse(
+                responseCode = "400",
+                description = "삭제 조건 불충족 (과거 일자의 운동 삭제 시도 또는 이미 완료된 운동 삭제 시도)",
+                content = [Content(schema = Schema(implementation = ErrorMessageResponse::class))]
+            ),
+            ApiResponse(responseCode = "401", description = "JWT 인증 실패"),
+            ApiResponse(responseCode = "404", description = "운동 종목을 찾을 수 없음")
+        ]
+    )
+    fun deleteExercise(
+        @Parameter(description = "삭제할 운동 ID", example = "1", required = true)
+        @PathVariable exerciseId: Long,
+        @Parameter(hidden = true)
+        @AuthenticationPrincipal principal: CustomOAuth2User
+    ): ResponseEntity<Void> {
+        log.info(
+            "Exercise deletion requested. provider={}, providerId={}, exerciseId={}",
+            principal.provider,
+            principal.providerId,
+            exerciseId
+        )
+        routineService.deleteExercise(exerciseId, principal.provider, principal.providerId)
+        return ResponseEntity.ok().build()
+    }
+
+
     @PostMapping("/regenerate")
     @Operation(
         summary = "AI 루틴 재생성 요청",

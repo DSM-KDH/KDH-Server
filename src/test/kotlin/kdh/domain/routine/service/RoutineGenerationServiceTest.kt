@@ -418,5 +418,71 @@ class RoutineGenerationServiceTest {
         assertThat(savedExercises).hasSize(2)
         assertThat(savedExercises.map { it.exerciseName }).containsExactlyInAnyOrder("스쿼트 1", "스쿼트 2")
     }
+
+    @Test
+    fun `generateMultiWeekRoutine applies programmatic weekly progression`() {
+        val request = request(totalWeeks = 4, activeDays = listOf(DayOfWeek.MON))
+        val baseWeek = listOf(
+            mapOf(
+                "Warm up" to listOf(
+                    mapOf("exercise_name" to "걷기", "reps_time" to "5분"),
+                    mapOf("exercise_name" to "플랭크", "reps_time" to "3세트 30초"),
+                    mapOf("exercise_name" to "스쿼트", "reps_time" to "3세트 10회"),
+                    mapOf("exercise_name" to "런지", "reps_time" to "3세트 10~12회(각쪽)")
+                )
+            )
+        )
+        val weeklyWorkoutsByWeek = listOf(baseWeek, baseWeek, baseWeek, baseWeek)
+        
+        Mockito.`when`(userRepository.findByProviderAndProviderId("kakao", "user-1")).thenReturn(user())
+        Mockito.`when`(routineRepository.saveAndFlush(anyValue())).thenAnswer { it.arguments[0] }
+        Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:user-1", null)).thenReturn(weeklyWorkoutsByWeek)
+
+        service.generateMultiWeekRoutine(request, "kakao", "user-1")
+
+        val routineCaptor = ArgumentCaptor.forClass(Routine::class.java)
+        Mockito.verify(routineRepository, Mockito.atLeastOnce()).saveAndFlush(captureValue(routineCaptor))
+        val savedRoutine = routineCaptor.allValues.last()
+        val dailyWorkouts = savedRoutine.dailyWorkouts
+
+        // Week 1 (Day 1)
+        val week1Exercises = dailyWorkouts[0].sections.first().exercises
+        assertThat(week1Exercises[0].repsTime).isEqualTo("5분")
+        assertThat(week1Exercises[1].repsTime).isEqualTo("3세트 30초")
+        assertThat(week1Exercises[2].repsTime).isEqualTo("3세트 10회")
+        assertThat(week1Exercises[3].repsTime).isEqualTo("3세트 10~12회(각쪽)")
+
+        // Week 2 (Day 2)
+        val week2Exercises = dailyWorkouts[1].sections.first().exercises
+        assertThat(week2Exercises[0].repsTime).isEqualTo("5분 30초")
+        assertThat(week2Exercises[1].repsTime).isEqualTo("3세트 35초")
+        assertThat(week2Exercises[2].repsTime).isEqualTo("3세트 11회")
+        assertThat(week2Exercises[3].repsTime).isEqualTo("3세트 11~13회(각쪽)")
+
+        // Week 3 (Day 3)
+        val week3Exercises = dailyWorkouts[2].sections.first().exercises
+        assertThat(week3Exercises[0].repsTime).isEqualTo("6분")
+        assertThat(week3Exercises[1].repsTime).isEqualTo("4세트 35초")
+        assertThat(week3Exercises[2].repsTime).isEqualTo("4세트 11회")
+        assertThat(week3Exercises[3].repsTime).isEqualTo("4세트 11~13회(각쪽)")
+
+        // Week 4 (Day 4)
+        val week4Exercises = dailyWorkouts[3].sections.first().exercises
+        assertThat(week4Exercises[0].repsTime).isEqualTo("6분 30초")
+        assertThat(week4Exercises[1].repsTime).isEqualTo("4세트 40초")
+        assertThat(week4Exercises[2].repsTime).isEqualTo("4세트 12회")
+        assertThat(week4Exercises[3].repsTime).isEqualTo("4세트 12~14회(각쪽)")
+
+        val sb = StringBuilder()
+        sb.appendLine("=== 루틴 진행도 시뮬레이션 결과 ===")
+        for (w in 1..4) {
+            sb.appendLine("\n[${w}주차]")
+            val exercises = dailyWorkouts[w - 1].sections.first().exercises
+            exercises.forEach { ex ->
+                sb.appendLine("- ${ex.exerciseName}: ${ex.repsTime}")
+            }
+        }
+        java.io.File("c:/Users/user/Desktop/pj/KDH/progression_result.txt").writeText(sb.toString())
+    }
 }
 

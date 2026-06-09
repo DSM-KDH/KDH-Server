@@ -17,6 +17,8 @@ import kdh.domain.user.repository.UserProfileHistoryRepository
 import kdh.domain.user.repository.UserRepository
 import kdh.domain.routine.enum.GoalType
 import kdh.domain.routine.exception.ExerciseCompletionDateInvalidException
+import kdh.domain.routine.exception.ExerciseDeleteCompletedException
+import kdh.domain.routine.exception.ExerciseDeletePastDateException
 import kdh.domain.routine.exception.ExerciseNotFoundException
 import kdh.domain.routine.exception.ExerciseWorkoutDateNotFoundException
 import kdh.domain.routine.exception.FutureRoutineExistsException
@@ -258,6 +260,35 @@ class RoutineService(
     }
 
     @Transactional
+    fun deleteExercise(exerciseId: Long, provider: String, providerId: String) {
+        val exercise = exerciseDetailRepository
+            .findByIdAndSectionDailyWorkoutRoutineUserProviderAndSectionDailyWorkoutRoutineUserProviderId(
+                exerciseId,
+                provider,
+                providerId
+            )
+            ?: throw ExerciseNotFoundException(exerciseId)
+
+        val workoutDate = exercise.section?.dailyWorkout?.workoutDate
+            ?: throw ExerciseWorkoutDateNotFoundException(exerciseId)
+
+        if (workoutDate.isBefore(LocalDate.now())) {
+            throw ExerciseDeletePastDateException()
+        }
+
+        if (exercise.completed) {
+            throw ExerciseDeleteCompletedException()
+        }
+
+        val section = exercise.section
+        if (section != null) {
+            section.exercises.remove(exercise)
+        }
+        exerciseDetailRepository.delete(exercise)
+    }
+
+
+    @Transactional
     fun regenerateRoutine(feedback: String?, fcmToken: String?, provider: String, providerId: String) {
         val user = userRepository.findByProviderAndProviderId(provider, providerId)
             ?: throw UserNotFoundException(provider, providerId)
@@ -366,44 +397,46 @@ class RoutineService(
         request: RoutineCreateRequest,
         latestProfile: kdh.domain.user.entity.UserProfileHistory
     ) {
+        val reasons = mutableListOf<String>()
+        val descriptions = mutableListOf<String>()
+
         val heightM = latestProfile.heightCm / 100.0
         val currentBmi = latestProfile.weightKg / (heightM * heightM)
         if (currentBmi < 16.0 || currentBmi >= 35.0) {
-            throw InvalidDietConditionException(
-                reason = "BMI_OUT_OF_RANGE",
-                description = "현재 BMI가 루틴 생성이 불가능한 범위입니다. (현재 BMI: ${String.format(java.util.Locale.US, "%.2f", currentBmi)}, 범위: 16 이상 35 미만)"
-            )
+            reasons.add("BMI_OUT_OF_RANGE")
+            descriptions.add("현재 BMI가 루틴 생성이 불가능한 범위입니다. (현재 BMI: ${String.format(java.util.Locale.US, "%.2f", currentBmi)}, 범위: 16 이상 35 미만)")
         }
 
         if (request.goal.goalType == GoalType.DIET) {
             val targetWeight = request.goal.targetWeight 
-                ?: throw InvalidDietConditionException(
-                    reason = "TARGET_WEIGHT_REQUIRED",
-                    description = "다이어트 목표인 경우 목표 체중을 입력해야 합니다."
-                )
+            if (targetWeight == null) {
+                reasons.add("TARGET_WEIGHT_REQUIRED")
+                descriptions.add("다이어트 목표인 경우 목표 체중을 입력해야 합니다.")
+            } else {
+                if (targetWeight >= latestProfile.weightKg) {
+                    reasons.add("TARGET_WEIGHT_HIGHER_THAN_CURRENT")
+                    descriptions.add("다이어트 목적의 목표 체중은 현재 체중보다 낮아야 합니다. (현재 체중: ${latestProfile.weightKg}kg, 목표 체중: ${targetWeight}kg)")
+                }
 
-            if (targetWeight >= latestProfile.weightKg) {
-                throw InvalidDietConditionException(
-                    reason = "TARGET_WEIGHT_HIGHER_THAN_CURRENT",
-                    description = "다이어트 목적의 목표 체중은 현재 체중보다 낮아야 합니다. (현재 체중: ${latestProfile.weightKg}kg, 목표 체중: ${targetWeight}kg)"
-                )
-            }
+                val lossPerWeek = (latestProfile.weightKg - targetWeight) / request.schedule.totalWeeks
+                if (lossPerWeek > 1.5) {
+                    reasons.add("WEEKLY_LOSS_LIMIT_EXCEEDED")
+                    descriptions.add("주당 감량 목표가 1.5kg을 초과할 수 없습니다. (설정된 주당 감량: ${String.format(java.util.Locale.US, "%.2f", lossPerWeek)}kg)")
+                }
 
-            val lossPerWeek = (latestProfile.weightKg - targetWeight) / request.schedule.totalWeeks
-            if (lossPerWeek > 1.5) {
-                throw InvalidDietConditionException(
-                    reason = "WEEKLY_LOSS_LIMIT_EXCEEDED",
-                    description = "주당 감량 목표가 1.5kg을 초과할 수 없습니다. (설정된 주당 감량: ${String.format(java.util.Locale.US, "%.2f", lossPerWeek)}kg)"
-                )
+                val targetBmi = targetWeight / (heightM * heightM)
+                if (targetBmi < 16.0) {
+                    reasons.add("TARGET_BMI_OUT_OF_RANGE")
+                    descriptions.add("목표 체중 도달 시 예상 BMI가 16 미만이 될 수 없습니다. (예상 BMI: ${String.format(java.util.Locale.US, "%.2f", targetBmi)})")
+                }
             }
+        }
 
-            val targetBmi = targetWeight / (heightM * heightM)
-            if (targetBmi < 16.0) {
-                throw InvalidDietConditionException(
-                    reason = "TARGET_BMI_OUT_OF_RANGE",
-                    description = "목표 체중 도달 시 예상 BMI가 16 미만이 될 수 없습니다. (예상 BMI: ${String.format(java.util.Locale.US, "%.2f", targetBmi)})"
-                )
-            }
+        if (reasons.isNotEmpty()) {
+            throw InvalidDietConditionException(
+                reason = reasons.joinToString(", "),
+                description = descriptions.joinToString("; ")
+            )
         }
     }
 }

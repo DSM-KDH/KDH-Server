@@ -105,6 +105,15 @@ class RoutineControllerTest {
         Mockito.verify(routineService).validateCreationConditionOnly(request, "kakao", "user-1")
     }
 
+    @Test
+    fun `deleteExercise delegates exerciseId and owner to service`() {
+        val response = controller.deleteExercise(5L, principal())
+
+        assertThat(response.statusCode.value()).isEqualTo(200)
+        Mockito.verify(routineService).deleteExercise(5L, "kakao", "user-1")
+    }
+
+
     private fun principal(): CustomOAuth2User {
         return CustomOAuth2User(userName = "Tester", provider = "kakao", providerId = "user-1")
     }

@@ -138,8 +138,9 @@ class RoutineGenerationService(
                         .drop((week - 1) * request.schedule.activeDays.size)
                         .take(request.schedule.activeDays.size)
                     val weeklyWorkoutsJson = weeklyWorkoutsByWeek.getOrElse(week - 1) { emptyList() }
+                    val progressedWeeklyWorkoutsJson = applyWeeklyProgression(weeklyWorkoutsJson, week)
 
-                    for ((index, workoutJson) in weeklyWorkoutsJson.withIndex()) {
+                    for ((index, workoutJson) in progressedWeeklyWorkoutsJson.withIndex()) {
                         val workoutDate = workoutDates.getOrNull(index) ?: routineStartDate.plusDays((dayCounter - 1).toLong())
                         val dailyWorkout = parseAndCreateDailyWorkout(workoutJson, dayCounter, workoutDate)
                         routine.addDailyWorkout(dailyWorkout)
@@ -474,13 +475,125 @@ class RoutineGenerationService(
     }
 
     private fun progressRepsTime(baseRepsTime: String?, week: Int): String {
-        val base = baseRepsTime?.takeIf { it.isNotBlank() } ?: "기준 강도"
-        val progressionInstruction = when (week) {
-            2 -> "2주차: 자세가 안정적이면 1-2회, 5-10초, 또는 5% 이내로만 증가"
-            3 -> "3주차: 자세가 무너지지 않으면 1세트 추가 또는 5-10% 볼륨 증가"
-            else -> "${week}주차: 피로가 과하지 않으면 난이도, 지속시간, 반복 수 중 하나만 5-10% 증가"
+        if (baseRepsTime.isNullOrBlank()) return ""
+        val trimmed = baseRepsTime.trim()
+        if (trimmed == "값 없음") return trimmed
+
+        // 1. Check if sets format: e.g., "3세트 10회" or "3세트 10~12회"
+        val setsRegex = Regex("""^(\d+)\s*세트\s*(.*)$""")
+        val setsMatch = setsRegex.matchEntire(trimmed)
+
+        val hasSets = setsMatch != null
+        val sets = setsMatch?.groupValues?.get(1)?.toInt() ?: 0
+        val remainder = if (hasSets) setsMatch!!.groupValues[2].trim() else trimmed
+
+        val progressedSets = if (hasSets) sets + (week - 1) / 2 else 0
+
+        // 2. Check if remainder is Time-based (contains 분, 초, min, sec, etc.)
+        val minutesRegex = Regex("""(\d+)\s*(분|min(?:ute)?s?)""", RegexOption.IGNORE_CASE)
+        val secondsRegex = Regex("""(\d+)\s*(초|sec(?:ond)?s?)""", RegexOption.IGNORE_CASE)
+
+        val minMatch = minutesRegex.find(remainder)
+        val secMatch = secondsRegex.find(remainder)
+
+        val isTimeBased = minMatch != null || secMatch != null
+
+        val resultRemainder = if (isTimeBased) {
+            val minutes = minMatch?.groupValues?.get(1)?.toInt() ?: 0
+            val minUnit = minMatch?.groupValues?.get(2) ?: "분"
+            val seconds = secMatch?.groupValues?.get(1)?.toInt() ?: 0
+            val secUnit = secMatch?.groupValues?.get(2) ?: "초"
+
+            val totalSeconds = minutes * 60 + seconds
+            val timeFactor = if (hasSets) {
+                1.0 + (week / 2) * 0.1
+            } else {
+                1.0 + (week - 1) * 0.1
+            }
+            val progressedSeconds = Math.round(totalSeconds * timeFactor).toInt()
+
+            // Round to nearest 5 seconds if >= 10 seconds
+            var roundedSeconds = if (totalSeconds >= 10) {
+                ((progressedSeconds + 2) / 5) * 5
+            } else {
+                progressedSeconds
+            }
+
+            // Ensure minimum increase
+            val minIncreaseSeconds = if (hasSets) (week / 2) * 5 else (week - 1) * 5
+            val minRequiredSeconds = totalSeconds + minIncreaseSeconds
+            if (roundedSeconds < minRequiredSeconds) {
+                roundedSeconds = minRequiredSeconds
+            }
+
+            // Resolve units
+            val minUnitResolved = if (minMatch != null) minUnit else {
+                if (secUnit.contains(Regex("[ㄱ-ㅎㅏ-ㅣ가-힣]"))) "분" else "min"
+            }
+            val secUnitResolved = if (secMatch != null) secUnit else {
+                if (minUnit.contains(Regex("[ㄱ-ㅎㅏ-ㅣ가-힣]"))) "초" else "sec"
+            }
+
+            val newMin = roundedSeconds / 60
+            val newSec = roundedSeconds % 60
+
+            if (newMin > 0 && newSec > 0) {
+                "${newMin}${minUnitResolved} ${newSec}${secUnitResolved}"
+            } else if (newMin > 0) {
+                "${newMin}${minUnitResolved}"
+            } else {
+                "${roundedSeconds}${secUnitResolved}"
+            }
+        } else {
+            // Reps-based (reps or ranges of reps)
+            val rangeRegex = Regex("""(\d+)\s*([~-])\s*(\d+)""")
+            if (rangeRegex.containsMatchIn(remainder)) {
+                rangeRegex.replace(remainder) { matchResult ->
+                    val minReps = matchResult.groupValues[1].toInt()
+                    val separator = matchResult.groupValues[2]
+                    val maxReps = matchResult.groupValues[3].toInt()
+
+                    val addMin = if (hasSets) {
+                        Math.round(minReps * ((week / 2) * 10) / 100.0).toInt().coerceAtLeast(week / 2)
+                    } else {
+                        Math.round(minReps * ((week - 1) * 10) / 100.0).toInt().coerceAtLeast(week - 1)
+                    }
+                    val progressedMin = minReps + addMin
+
+                    val addMax = if (hasSets) {
+                        Math.round(maxReps * ((week / 2) * 10) / 100.0).toInt().coerceAtLeast(week / 2)
+                    } else {
+                        Math.round(maxReps * ((week - 1) * 10) / 100.0).toInt().coerceAtLeast(week - 1)
+                    }
+                    val progressedMax = maxReps + addMax
+
+                    "$progressedMin$separator$progressedMax"
+                }
+            } else {
+                // Single number match
+                val singleNumberRegex = Regex("""\d+""")
+                singleNumberRegex.replace(remainder) { matchResult ->
+                    val reps = matchResult.value.toInt()
+                    val add = if (hasSets) {
+                        Math.round(reps * ((week / 2) * 10) / 100.0).toInt().coerceAtLeast(week / 2)
+                    } else {
+                        Math.round(reps * ((week - 1) * 10) / 100.0).toInt().coerceAtLeast(week - 1)
+                    }
+                    val progressedReps = reps + add
+                    progressedReps.toString()
+                }
+            }
         }
-        return "$base / $progressionInstruction"
+
+        return if (hasSets) {
+            if (resultRemainder.isNotBlank()) {
+                "${progressedSets}세트 $resultRemainder"
+            } else {
+                "${progressedSets}세트"
+            }
+        } else {
+            resultRemainder
+        }
     }
 
     private fun sendRoutineProgress(
