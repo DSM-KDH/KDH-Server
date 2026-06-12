@@ -31,7 +31,7 @@ class RoutineGenerationService(
         const val PHASE_MULTI_WEEK_GENERATING = "MULTI_WEEK_GENERATING"
         const val PHASE_PERSISTING_WEEKS = "PERSISTING_WEEKS"
         const val PHASE_COMPLETED = "COMPLETED"
-        const val MAX_PARALLEL_WEEK_GENERATION = 4
+        const val MAX_PARALLEL_WEEK_GENERATION = 50
     }
 
     fun generateMultiWeekRoutine(
@@ -620,6 +620,7 @@ class RoutineGenerationService(
             elapsedSeconds = elapsedSeconds,
             timingEstimate = timingEstimate
         )
+
         fcmService.sendNotification(
             token = token,
             title = notificationTitle,

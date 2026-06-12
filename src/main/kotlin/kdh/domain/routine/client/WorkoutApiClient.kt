@@ -30,7 +30,7 @@ class WorkoutApiClient(
     private companion object {
         const val MAX_WORKOUT_API_RETRY_COUNT = 3
         const val RETRY_DELAY_MILLIS = 2_000L
-        const val MAX_PARALLEL_WEEK_GENERATION = 4
+        const val MAX_PARALLEL_WEEK_GENERATION = 50
     }
 
     private lateinit var webClient: WebClient
