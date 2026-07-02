@@ -23,7 +23,8 @@ class RoutineGenerationService(
     private val workoutApiClient: WorkoutApiClient,
     private val fcmService: FcmService,
     private val routineRepository: RoutineRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val routineCreationTracker: RoutineCreationTracker
 ) {
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val log = LoggerFactory.getLogger(javaClass)
@@ -659,14 +660,17 @@ class RoutineGenerationService(
         request: RoutineCreateRequest,
         totalWorkoutCount: Int
     ): RoutineTimingEstimate {
-        val firstWeekSeconds = estimateFirstWeekSeconds(request)
-        val expansionSeconds = estimateExpansionSeconds(totalWorkoutCount)
-        val generationWaves = (request.schedule.totalWeeks + MAX_PARALLEL_WEEK_GENERATION - 1) /
-            MAX_PARALLEL_WEEK_GENERATION
-        val multiWeekGenerationSeconds = (firstWeekSeconds * generationWaves * 135 + 99) / 100
+        val activeCount = routineCreationTracker.getActiveCount().coerceAtLeast(1)
+        val estimatedMinutes = if (activeCount <= RoutineCreationTracker.MAX_CONCURRENT_ROUTINES) {
+            5
+        } else {
+            5 + ((activeCount - 1) / RoutineCreationTracker.MAX_CONCURRENT_ROUTINES) * 5
+        }
+        val totalSeconds = estimatedMinutes * 60
+        val firstWeekSeconds = estimateFirstWeekSeconds(request).coerceAtMost(totalSeconds)
         return RoutineTimingEstimate(
             firstWeekSeconds = firstWeekSeconds,
-            totalSeconds = (multiWeekGenerationSeconds + expansionSeconds).coerceAtLeast(firstWeekSeconds)
+            totalSeconds = totalSeconds
         )
     }
 

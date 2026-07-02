@@ -42,7 +42,8 @@ class RoutineService(
     private val userProfileHistoryRepository: UserProfileHistoryRepository,
     private val dailyWorkoutRepository: DailyWorkoutRepository,
     private val exerciseDetailRepository: ExerciseDetailRepository,
-    private val routineRepository: RoutineRepository
+    private val routineRepository: RoutineRepository,
+    private val routineCreationTracker: RoutineCreationTracker
 ) {
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val log = LoggerFactory.getLogger(javaClass)
@@ -107,6 +108,7 @@ class RoutineService(
 
         val messagePayload = RoutineCreationMessage(provider = provider, providerId = providerId, request = request)
         val message = objectMapper.writeValueAsString(messagePayload)
+        routineCreationTracker.increment()
         rabbitTemplate.convertAndSend("routine.exchange", "routine.create.key", message)
         log.info(
             "Routine creation message published. provider={}, providerId={}, exchange={}, routingKey={}, payloadBytes={}",
@@ -332,6 +334,7 @@ class RoutineService(
             regenerationCount = latestRoutine.regenerationCount + 1
         )
         val message = objectMapper.writeValueAsString(messagePayload)
+        routineCreationTracker.increment()
         rabbitTemplate.convertAndSend("routine.exchange", "routine.create.key", message)
         log.info(
             "Routine regeneration request published. provider={}, providerId={}, feedback={}, regenerationCount={}",

@@ -53,6 +53,7 @@ class RoutineServiceTest {
     private lateinit var dailyWorkoutRepository: DailyWorkoutRepository
     private lateinit var exerciseRepository: ExerciseDetailRepository
     private lateinit var routineRepository: RoutineRepository
+    private lateinit var routineCreationTracker: RoutineCreationTracker
     private lateinit var service: RoutineService
 
     @BeforeEach
@@ -63,13 +64,15 @@ class RoutineServiceTest {
         dailyWorkoutRepository = Mockito.mock(DailyWorkoutRepository::class.java)
         exerciseRepository = Mockito.mock(ExerciseDetailRepository::class.java)
         routineRepository = Mockito.mock(RoutineRepository::class.java)
+        routineCreationTracker = RoutineCreationTracker()
         service = RoutineService(
             rabbitTemplate,
             userRepository,
             profileRepository,
             dailyWorkoutRepository,
             exerciseRepository,
-            routineRepository
+            routineRepository,
+            routineCreationTracker
         )
     }
 
@@ -82,7 +85,10 @@ class RoutineServiceTest {
             .thenReturn(UserProfileHistory(user = user(), heightCm = 175.0, weightKg = 70.0, gender = Gender.MALE))
         Mockito.`when`(dailyWorkoutRepository.findFirstFutureWorkoutDate("kakao", "user-1", today)).thenReturn(null)
 
+        val beforeCount = routineCreationTracker.getActiveCount()
         service.createRoutine(request, "kakao", "user-1")
+        val afterCount = routineCreationTracker.getActiveCount()
+        assertThat(afterCount).isEqualTo(beforeCount + 1)
 
         val messageCaptor = ArgumentCaptor.forClass(String::class.java)
         Mockito.verify(rabbitTemplate).convertAndSend(

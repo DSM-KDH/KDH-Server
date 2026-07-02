@@ -47,6 +47,7 @@ import org.springframework.context.annotation.Import
     RoutineService::class,
     RoutineMessageHandler::class,
     RoutineGenerationService::class,
+    RoutineCreationTracker::class,
     RoutineCreationFlowIntegrationTest.MockConfig::class
 )
 class RoutineCreationFlowIntegrationTest @Autowired constructor(

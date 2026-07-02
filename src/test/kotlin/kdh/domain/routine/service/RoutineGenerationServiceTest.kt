@@ -34,6 +34,7 @@ class RoutineGenerationServiceTest {
     private lateinit var fcmService: FcmService
     private lateinit var routineRepository: RoutineRepository
     private lateinit var userRepository: UserRepository
+    private lateinit var routineCreationTracker: RoutineCreationTracker
     private lateinit var service: RoutineGenerationService
 
     @BeforeEach
@@ -42,7 +43,8 @@ class RoutineGenerationServiceTest {
         fcmService = Mockito.mock(FcmService::class.java)
         routineRepository = Mockito.mock(RoutineRepository::class.java)
         userRepository = Mockito.mock(UserRepository::class.java)
-        service = RoutineGenerationService(workoutApiClient, fcmService, routineRepository, userRepository)
+        routineCreationTracker = RoutineCreationTracker()
+        service = RoutineGenerationService(workoutApiClient, fcmService, routineRepository, userRepository, routineCreationTracker)
     }
 
     @Test
@@ -58,6 +60,7 @@ class RoutineGenerationServiceTest {
         Mockito.`when`(routineRepository.saveAndFlush(anyValue())).thenAnswer { it.arguments[0] }
         Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:user-1", null)).thenReturn(weeklyWorkoutsByWeek)
 
+        routineCreationTracker.increment()
         service.generateMultiWeekRoutine(request, "kakao", "user-1")
 
         Mockito.verify(workoutApiClient, Mockito.times(1)).generateMultiWeekRoutine(request, "kakao:user-1", null)
@@ -118,6 +121,7 @@ class RoutineGenerationServiceTest {
         Mockito.`when`(routineRepository.saveAndFlush(anyValue())).thenAnswer { it.arguments[0] }
         Mockito.`when`(workoutApiClient.generateMultiWeekRoutine(request, "kakao:user-1", null)).thenReturn(weeklyWorkoutsByWeek)
 
+        repeat(4) { routineCreationTracker.increment() }
         service.generateMultiWeekRoutine(request, "kakao", "user-1")
 
         Mockito.verify(workoutApiClient, Mockito.times(1)).generateMultiWeekRoutine(request, "kakao:user-1", null)

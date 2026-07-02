@@ -14,7 +14,8 @@ import org.springframework.stereotype.Component
 @Component
 class RoutineMessageHandler(
     private val routineGenerationService: RoutineGenerationService,
-    private val fcmService: FcmService
+    private val fcmService: FcmService,
+    private val routineCreationTracker: RoutineCreationTracker
 ) {
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val log = LoggerFactory.getLogger(javaClass)
@@ -70,6 +71,8 @@ class RoutineMessageHandler(
             )
             sendFailureNotification(messagePayload)
             throw (e as? KdhException ?: RoutineGenerationFailedException(e))
+        } finally {
+            routineCreationTracker.decrement()
         }
     }
 

@@ -28,13 +28,15 @@ class RoutineMessageHandlerTest {
     private val objectMapper = jacksonObjectMapper()
     private lateinit var routineGenerationService: RoutineGenerationService
     private lateinit var fcmService: FcmService
+    private lateinit var routineCreationTracker: RoutineCreationTracker
     private lateinit var handler: RoutineMessageHandler
 
     @BeforeEach
     fun setUp() {
         routineGenerationService = Mockito.mock(RoutineGenerationService::class.java)
         fcmService = Mockito.mock(FcmService::class.java)
-        handler = RoutineMessageHandler(routineGenerationService, fcmService)
+        routineCreationTracker = RoutineCreationTracker()
+        handler = RoutineMessageHandler(routineGenerationService, fcmService, routineCreationTracker)
     }
 
     @Test
@@ -106,5 +108,18 @@ class RoutineMessageHandlerTest {
                 )
             )
         )
+    }
+
+    @Test
+    fun `handleMessage decrements active count on successful execution`() {
+        val payload = message()
+        routineCreationTracker.increment()
+        val beforeCount = routineCreationTracker.getActiveCount()
+
+        handler.handleMessage(toJson(payload))
+
+        val afterCount = routineCreationTracker.getActiveCount()
+        assertThat(beforeCount).isEqualTo(1)
+        assertThat(afterCount).isEqualTo(0)
     }
 }
